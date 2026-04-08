@@ -71,14 +71,14 @@ def _apply_advanced_adjustments(
         feedback_parts.append("[WARNING] Penalty: Too many risks identified (possible false positives).")
 
     # 3. Section reference penalty
-    if "section" not in normalized:
+    if not any(x in normalized for x in ["section", "clause", "provision"]):
         penalty = min(0.05, score * 0.1)
         score -= penalty
         feedback_parts.append("[WARNING] Penalty: No specific clause references provided.")
 
     # 4. Structured output bonus
     if isinstance(action.identified_risks, list) and action.identified_risks:
-        score += 0.03
+        score = min(score + 0.03, 1.0)
         feedback_parts.append("[PASS] Bonus: Proper structured output format.")
 
     # 5. Cross-clause reasoning bonus (hard task only)
@@ -86,16 +86,13 @@ def _apply_advanced_adjustments(
         score += min(0.05, 1.0 - score)
         feedback_parts.append("[PASS] Bonus: Identified cross-clause reasoning.")
 
-    # 6. Difficulty skew to ensure scores reflect difficulty curve
+    # 6. Cap tasks
     if task == "easy":
-        score += 0.50
-        score = min(score, 0.93)  # easy task max is 0.93
+        score = min(score, 0.90)
     elif task == "medium":
-        score += 0.10
-        score = min(score, 0.86)
+        score = min(score, 0.75)
     elif task == "hard":
-        score -= 0.35
-        score = min(score, 0.55)
+        score = min(score, 0.60)
 
     return round(min(1.0, max(0.0, score)), 4)
 
