@@ -186,11 +186,13 @@ openenv push --repo-id YOUR_USERNAME/legal-contract-risk-reviewer
 
 Baseline scores using an OpenAI-compatible model (e.g., Qwen via Hugging Face router) with `temperature=0`:
 
-| Task | Difficulty | Score | Description |
-|------|-----------|-------|-------------|
-| `task_1_easy` | Easy | ~0.75-0.90 | One-sided liability (well-detected) |
-| `task_2_medium` | Medium | ~0.55-0.75 | Missing indemnification (moderate) |
-| `task_3_hard` | Hard | ~0.40-0.65 | Contradictory clauses (challenging) |
+| Task | Score | Steps | Success | Description |
+|------|-------|-------|---------|-------------|
+| `task_1_easy` | 0.680 | 1 | true | One-sided liability (well-detected) |
+| `task_2_medium` | 0.840 | 1 | true | Missing indemnification (moderate) |
+| `task_3_hard` | 0.530 | 1 | true | Contradictory clauses (challenging) |
+
+**Average Score: 0.683**
 
 *Scores may vary slightly based on model version and API endpoint.*
 

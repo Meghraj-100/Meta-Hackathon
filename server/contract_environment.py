@@ -206,21 +206,13 @@ class ContractRiskEnvironment(Environment):
         task_id = self._state.current_task
         score, feedback = grade_task(task_id, action)
 
-        # Cost Awareness mechanic (penalize 0.05 per item to prevent spamming)
-        analysis_cost = 0.05 * (
-            len(action.identified_risks) +
-            len(action.missing_clauses) +
-            len(action.contradictions)
-        )
-        score = max(score - analysis_cost, 0.0)
-
         # Update state
         self._state.total_score = score
         self._state.is_done = True
         self._episode_done = True
 
         return ContractObservation(
-            contract_text="",  # Don't re-send the contract on step
+            contract_text=self._current_task_data.get("contract", ""),
             task_id=task_id,
             task_description="",
             task_difficulty=self._state.current_difficulty,
@@ -234,15 +226,9 @@ class ContractRiskEnvironment(Environment):
                 "difficulty": self._state.current_difficulty,
                 "steps_taken": self._state.step_count,
                 "history_length": len(self._history),
-                "analysis_cost": float(round(analysis_cost, 3)),
             },
         )
 
-    @property
     def state(self) -> ContractState:
         """Get the current environment state."""
-        return self._state
-
-    def get_state(self) -> ContractState:
-        """Get the current environment state (method form for API compatibility)."""
         return self._state

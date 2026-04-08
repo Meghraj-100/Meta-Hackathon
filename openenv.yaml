@@ -1,5 +1,9 @@
 spec_version: 1
 name: legal_contract_risk_reviewer
+version: "1.0.0"
+description: "Legal Contract Risk Reviewer benchmarking environment."
+author: "Meghraj-100"
+tags: ["openenv"]
 type: space
 runtime: fastapi
 app: server.app:app

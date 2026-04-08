@@ -196,7 +196,7 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
 
     # 1. Overconfidence / verbosity penalty
     word_count = len(_normalize(all_text).split())
-    if word_count > 250:
+    if word_count > 600:
         penalty = min(0.05, score * 0.1)
         score -= penalty
         feedback_parts.append("⚠ Penalty: Overly verbose response reduces clarity.")
@@ -219,9 +219,7 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
         feedback_parts.append("✓ Bonus: Proper structured output format.")
 
     # 5. Cross-clause reasoning bonus (advanced thinking)
-    if action.contradictions and len(action.contradictions) > 0:
-        score += min(0.05, 1.0 - score)
-        feedback_parts.append("✓ Bonus: Identified cross-clause reasoning.")
+    # Applied only in grade_hard
 
     # Clamp final score safely
     score = round(min(1.0, max(0.0, score)), 4)
