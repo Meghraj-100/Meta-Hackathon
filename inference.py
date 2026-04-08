@@ -1,86 +1,124 @@
 """
-Baseline Inference Script for the Legal Contract Risk Reviewer.
+Inference Script for Legal Contract Risk Reviewer
+===================================
+MANDATORY
+- Before submitting, ensure the following variables are defined in your environment configuration:
+    API_BASE_URL   The API endpoint for the LLM.
+    MODEL_NAME     The model identifier to use for inference.
+    HF_TOKEN       Your Hugging Face / API key.
 
-Uses the OpenAI API client to run an LLM agent against all 3 tasks.
-Produces structured [START], [STEP], and [END] logs as required
-by the hackathon evaluation format.
+- The inference script must be named `inference.py` and placed in the root directory of the project
+- Participants must use OpenAI Client for all LLM calls using above variables
 
-Required environment variables:
-    OPENAI_API_KEY  — API key for the LLM service
-    API_BASE_URL    — API endpoint (default: https://api.openai.com/v1)
-    MODEL_NAME      — Model identifier (default: gpt-4o-mini)
+STDOUT FORMAT
+- The script must emit exactly three line types to stdout, in this order:
 
-Usage:
-    export OPENAI_API_KEY=sk-...
-    python inference.py
+    [START] task=<task_name> env=<benchmark> model=<model_name>
+    [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
+    [END]   success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
 """
 
 import json
 import os
 import sys
-import time
+import textwrap
 import traceback
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import requests
 from openai import OpenAI
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
+API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
+MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o-mini"
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 
-# Environment server URL (local by default)
-ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://localhost:8000")
+BENCHMARK = "legal_contract_risk_reviewer"
+TASKS = ["task_1_easy", "task_2_medium", "task_3_hard"]
+
+# Environment server URL (local by default, or HF Space URL)
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+
+# Inference parameters
+TEMPERATURE = 0.0  # Deterministic for reproducibility
+MAX_TOKENS = 4096
+SUCCESS_SCORE_THRESHOLD = 0.3  # normalized score in [0, 1]
 
 # ─── OpenAI Client Setup ────────────────────────────────────────────────────
 
 client = OpenAI(
-    api_key=OPENAI_API_KEY,
+    api_key=API_KEY,
     base_url=API_BASE_URL,
 )
 
 # ─── System Prompt ───────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are an expert legal contract risk reviewer. Your job is to carefully analyze legal contracts and identify potential risks, missing protections, and problematic clauses.
+SYSTEM_PROMPT = textwrap.dedent("""
+    You are an expert legal contract risk reviewer. Your job is to carefully analyze
+    legal contracts and identify potential risks, missing protections, and problematic clauses.
 
-When analyzing a contract, you must provide your analysis in a specific JSON format. Your response MUST be valid JSON with the following structure:
+    When analyzing a contract, you must provide your analysis in a specific JSON format.
+    Your response MUST be valid JSON with the following structure:
 
-{
-    "identified_risks": [
-        {
-            "clause_reference": "Section X.Y",
-            "risk_type": "description of the type of risk",
-            "explanation": "detailed explanation of why this is risky"
-        }
-    ],
-    "missing_clauses": [
-        {
-            "clause_type": "name of the missing clause type",
-            "importance": "critical/high/medium/low"
-        }
-    ],
-    "contradictions": [
-        {
-            "clause_a": "Section X",
-            "clause_b": "Section Y",
-            "explanation": "how these clauses contradict each other"
-        }
-    ],
-    "overall_assessment": "A comprehensive summary of the contract's risk profile",
-    "recommendations": [
-        "Specific recommendation 1",
-        "Specific recommendation 2"
-    ]
-}
+    {
+        "identified_risks": [
+            {
+                "clause_reference": "Section X.Y",
+                "risk_type": "description of the type of risk",
+                "explanation": "detailed explanation of why this is risky"
+            }
+        ],
+        "missing_clauses": [
+            {
+                "clause_type": "name of the missing clause type",
+                "importance": "critical/high/medium/low"
+            }
+        ],
+        "contradictions": [
+            {
+                "clause_a": "Section X",
+                "clause_b": "Section Y",
+                "explanation": "how these clauses contradict each other"
+            }
+        ],
+        "overall_assessment": "A comprehensive summary of the contract's risk profile",
+        "recommendations": [
+            "Specific recommendation 1",
+            "Specific recommendation 2"
+        ]
+    }
 
-Be thorough and precise. Reference specific section numbers. Explain your reasoning clearly.
-IMPORTANT: Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
+    Be thorough and precise. Reference specific section numbers. Explain your reasoning clearly.
+    IMPORTANT: Respond ONLY with valid JSON. No markdown, no code blocks, no extra text.
+""").strip()
 
 
-# ─── Helper Functions ────────────────────────────────────────────────────────
+# ─── Structured Logging ─────────────────────────────────────────────────────
+
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}",
+        flush=True,
+    )
+
+
+# ─── Environment Interaction (HTTP) ─────────────────────────────────────────
 
 def env_reset(task_id: str) -> Dict[str, Any]:
     """Reset the environment via HTTP API."""
@@ -104,32 +142,26 @@ def env_step(action: Dict[str, Any]) -> Dict[str, Any]:
     return response.json()
 
 
-def env_state() -> Dict[str, Any]:
-    """Get environment state via HTTP API."""
-    response = requests.get(
-        f"{ENV_BASE_URL}/state",
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
-
+# ─── LLM Call ────────────────────────────────────────────────────────────────
 
 def call_llm(contract_text: str, task_description: str, instructions: str) -> Dict[str, Any]:
     """
     Call the LLM to analyze a contract.
-
     Returns the parsed JSON action from the LLM response.
     """
-    user_prompt = f"""## Task
-{task_description}
+    user_prompt = textwrap.dedent(f"""
+        ## Task
+        {task_description}
 
-## Instructions
-{instructions}
+        ## Instructions
+        {instructions}
 
-## Contract to Analyze
-{contract_text}
+        ## Contract to Analyze
+        {contract_text}
 
-Analyze this contract and provide your findings in the required JSON format. Remember to respond ONLY with valid JSON."""
+        Analyze this contract and provide your findings in the required JSON format.
+        Remember to respond ONLY with valid JSON.
+    """).strip()
 
     response = client.chat.completions.create(
         model=MODEL_NAME,
@@ -137,16 +169,15 @@ Analyze this contract and provide your findings in the required JSON format. Rem
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.0,  # Deterministic for reproducibility
-        max_tokens=4096,
+        temperature=TEMPERATURE,
+        max_tokens=MAX_TOKENS,
     )
 
-    raw_response = response.choices[0].message.content.strip()
+    raw_response = (response.choices[0].message.content or "").strip()
 
     # Clean up response — remove markdown code blocks if present
     if raw_response.startswith("```"):
         lines = raw_response.split("\n")
-        # Remove first line (```json) and last line (```)
         lines = [l for l in lines if not l.strip().startswith("```")]
         raw_response = "\n".join(lines)
 
@@ -161,19 +192,11 @@ Analyze this contract and provide your findings in the required JSON format. Rem
                 parsed = json.loads(raw_response[start:end])
             except json.JSONDecodeError:
                 parsed = {
-                    "identified_risks": [],
-                    "missing_clauses": [],
-                    "contradictions": [],
                     "overall_assessment": raw_response,
-                    "recommendations": [],
                 }
         else:
             parsed = {
-                "identified_risks": [],
-                "missing_clauses": [],
-                "contradictions": [],
                 "overall_assessment": raw_response,
-                "recommendations": [],
             }
 
     # Ensure all required keys exist
@@ -186,117 +209,115 @@ Analyze this contract and provide your findings in the required JSON format. Rem
     return parsed
 
 
-# ─── Main Inference Loop ────────────────────────────────────────────────────
+# ─── Run Single Task ────────────────────────────────────────────────────────
 
 def run_task(task_id: str) -> Dict[str, Any]:
     """
-    Run a single task: reset → LLM analysis → step → score.
+    Run a single task episode: reset → LLM analysis → step → score.
 
-    Returns dict with task results.
+    Emits [START], [STEP], [END] logs per the required format.
     """
-    # Reset environment
-    reset_result = env_reset(task_id)
-    observation = reset_result["observation"]
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
 
-    contract_text = observation["contract_text"]
-    task_description = observation["task_description"]
-    instructions = observation["instructions"]
-    difficulty = observation["task_difficulty"]
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
-    print(f"[STEP] task_id={task_id} difficulty={difficulty} status=analyzing", flush=True)
+    try:
+        # Reset environment with this task
+        reset_result = env_reset(task_id)
+        observation = reset_result["observation"]
 
-    # Call LLM to analyze the contract
-    llm_start = time.time()
-    action = call_llm(contract_text, task_description, instructions)
-    llm_duration = round(time.time() - llm_start, 2)
+        contract_text = observation["contract_text"]
+        task_description = observation["task_description"]
+        instructions = observation["instructions"]
 
-    print(f"[STEP] task_id={task_id} llm_duration={llm_duration}s status=submitting", flush=True)
+        # Call LLM to analyze the contract
+        action = call_llm(contract_text, task_description, instructions)
 
-    # Submit action to environment for grading
-    step_result = env_step(action)
+        # Create a short action summary for the log line
+        action_summary = (
+            f"analyze(risks={len(action.get('identified_risks', []))},"
+            f"missing={len(action.get('missing_clauses', []))},"
+            f"contradictions={len(action.get('contradictions', []))})"
+        )
 
-    score = step_result.get("reward", 0.0)
-    done = step_result.get("done", True)
-    feedback = step_result.get("observation", {}).get("feedback", "")
+        # Submit action to environment for grading
+        step_result = env_step(action)
 
-    print(f"[STEP] task_id={task_id} score={score} done={done} llm_time={llm_duration}s", flush=True)
+        reward = step_result.get("reward", 0.0)
+        done = step_result.get("done", True)
+        error_msg = step_result.get("observation", {}).get("metadata", {}).get("error", None)
+
+        rewards.append(reward)
+        steps_taken = 1
+        score = reward  # Single-step task, score equals the reward
+        success = score >= SUCCESS_SCORE_THRESHOLD
+
+        log_step(
+            step=1,
+            action=action_summary,
+            reward=reward,
+            done=done,
+            error=error_msg,
+        )
+
+    except Exception as exc:
+        log_step(
+            step=1,
+            action="error",
+            reward=0.0,
+            done=True,
+            error=str(exc),
+        )
+        rewards = [0.0]
+        steps_taken = 1
+        traceback.print_exc(file=sys.stderr)
+
+    finally:
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
     return {
         "task_id": task_id,
-        "difficulty": difficulty,
         "score": score,
-        "done": done,
-        "feedback": feedback,
-        "llm_duration": llm_duration,
-        "action_summary": {
-            "num_risks": len(action.get("identified_risks", [])),
-            "num_missing": len(action.get("missing_clauses", [])),
-            "num_contradictions": len(action.get("contradictions", [])),
-            "has_assessment": bool(action.get("overall_assessment")),
-            "num_recommendations": len(action.get("recommendations", [])),
-        },
+        "success": success,
+        "steps": steps_taken,
+        "rewards": rewards,
     }
 
+
+# ─── Main ───────────────────────────────────────────────────────────────────
 
 def main():
     """Run inference on all 3 tasks and produce baseline scores."""
 
-    # Validate configuration
-    if not OPENAI_API_KEY:
-        print("ERROR: OPENAI_API_KEY environment variable is not set.", file=sys.stderr)
+    if not API_KEY:
+        print(
+            "ERROR: No API key found. Set OPENAI_API_KEY, API_KEY, or HF_TOKEN.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    tasks = ["task_1_easy", "task_2_medium", "task_3_hard"]
-    total_start = time.time()
+    all_results = []
 
-    # ── [START] ──
-    print(f"[START] environment=legal_contract_risk_reviewer model={MODEL_NAME} "
-          f"api_base={API_BASE_URL} num_tasks={len(tasks)}", flush=True)
+    for task_id in TASKS:
+        result = run_task(task_id)
+        all_results.append(result)
+        print("", flush=True)  # blank line between tasks
 
-    results = []
+    # Print summary
+    print("=" * 60, flush=True)
+    print("BASELINE RESULTS SUMMARY", flush=True)
+    print("=" * 60, flush=True)
     total_score = 0.0
-
-    for task_id in tasks:
-        try:
-            result = run_task(task_id)
-            results.append(result)
-            total_score += result["score"]
-        except Exception as e:
-            print(f"[STEP] task_id={task_id} status=error error={str(e)}", flush=True)
-            traceback.print_exc()
-            results.append({
-                "task_id": task_id,
-                "score": 0.0,
-                "error": str(e),
-            })
-
-    total_duration = round(time.time() - total_start, 2)
-    avg_score = round(total_score / len(tasks), 4) if tasks else 0.0
-
-    # ── [END] ──
-    scores_summary = " ".join(
-        f"{r['task_id']}={r.get('score', 0.0)}" for r in results
-    )
-    print(f"[END] total_score={round(total_score, 4)} avg_score={avg_score} "
-          f"duration={total_duration}s {scores_summary}", flush=True)
-
-    # Print detailed results
-    print("\n" + "=" * 60)
-    print("BASELINE RESULTS SUMMARY")
-    print("=" * 60)
-    for r in results:
-        status = "✓" if r.get("score", 0) >= 0.5 else "✗"
-        print(f"  {status} {r['task_id']}: {r.get('score', 0.0):.4f}")
-        if "action_summary" in r:
-            s = r["action_summary"]
-            print(f"    Risks: {s['num_risks']}, Missing: {s['num_missing']}, "
-                  f"Contradictions: {s['num_contradictions']}, "
-                  f"Recommendations: {s['num_recommendations']}")
-    print(f"\n  Average Score: {avg_score:.4f}")
-    print(f"  Total Duration: {total_duration}s")
-    print("=" * 60)
-
-    return results
+    for r in all_results:
+        status = "PASS" if r["success"] else "FAIL"
+        print(f"  [{status}] {r['task_id']}: score={r['score']:.3f}", flush=True)
+        total_score += r["score"]
+    avg = total_score / len(all_results) if all_results else 0.0
+    print(f"\n  Average Score: {avg:.3f}", flush=True)
+    print("=" * 60, flush=True)
 
 
 if __name__ == "__main__":
