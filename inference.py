@@ -35,13 +35,11 @@ load_dotenv()
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-# Required: API_BASE_URL and MODEL_NAME must have defaults
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN")
-
-# API_KEY use for OpenAI client (derived from HF_TOKEN as per common OpenEnv patterns)
-API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY") or HF_TOKEN
+# MANDATORY: Use exactly these environment variables with no defaults or fallbacks.
+# This ensures all calls go through the required LLM proxy.
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY = os.environ["API_KEY"]
+MODEL_NAME = os.environ["MODEL_NAME"]
 
 BENCHMARK = "legal_contract_risk_reviewer"
 TASKS = ["task_1_easy", "task_2_medium", "task_3_hard"]
