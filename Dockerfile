@@ -23,6 +23,7 @@ RUN uv pip install --system --no-cache \
     "requests>=2.31.0" \
     "gradio>=4.0.0" \
     "openai>=1.0.0" \
+    "python-dotenv>=1.0.0" \
     "websockets>=12.0"
 
 # Try to install openenv-core (may not be available)

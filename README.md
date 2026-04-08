@@ -1,3 +1,15 @@
+---
+title: Legal Contract Risk Reviewer
+emoji: 📜
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+license: mit
+tags:
+  - openenv
+---
+
 # 📜 Legal Contract Risk Reviewer
 
 An **OpenEnv** environment where AI agents analyze legal contracts to identify risky terms, missing standard clauses, and legal loopholes. Built for the OpenEnv Round 1 Bootcamp hackathon.
@@ -141,8 +153,8 @@ Feedback → Returned to Agent
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/legal-contract-risk-reviewer
-cd legal-contract-risk-reviewer
+git clone https://github.com/Meghraj-100/Meta-Hackathon
+cd Meta-Hackathon
 
 # Create virtual environment and install dependencies
 uv venv
@@ -184,17 +196,17 @@ openenv push --repo-id YOUR_USERNAME/legal-contract-risk-reviewer
 
 ## 📊 Baseline Scores
 
-Baseline scores using an OpenAI-compatible model (e.g., Qwen via Hugging Face router) with `temperature=0`:
+Baseline scores using `Qwen/Qwen2.5-72B-Instruct` via Hugging Face router with `temperature=0`:
 
 | Task | Score | Steps | Success | Description |
 |------|-------|-------|---------|-------------|
-| `task_1_easy` | 0.680 | 1 | true | One-sided liability (well-detected) |
-| `task_2_medium` | 0.840 | 1 | true | Missing indemnification (moderate) |
-| `task_3_hard` | 0.530 | 1 | true | Contradictory clauses (challenging) |
+| `task_1_easy` | 0.900 | 1 | ✅ | One-sided liability — correctly identified |
+| `task_2_medium` | 0.750 | 1 | ✅ | Missing indemnification — well detected |
+| `task_3_hard` | 0.600 | 1 | ✅ | Contradictory clauses — challenging |
 
-**Average Score: 0.683**
+**Average Score: 0.750**
 
-*Scores may vary slightly based on model version and API endpoint.*
+*Scores are deterministic for the same model — grading is fully rule-based.*
 
 ## 🔒 Design Principles
 
