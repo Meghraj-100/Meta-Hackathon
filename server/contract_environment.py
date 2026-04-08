@@ -206,21 +206,7 @@ class ContractRiskEnvironment(Environment):
         task_id = self._state.current_task
         score, feedback = grade_task(task_id, action)
 
-        # Cost Awareness mechanic (penalize 0.05 per extra item beyond ground truth)
-        gt = self._current_task_data["ground_truth"]
-        expected_count = (
-            len(gt.get("expected_risks", [])) +
-            len(gt.get("missing_clauses", [])) +
-            len(gt.get("contradictions", []))
-        )
-        actual_count = (
-            len(action.identified_risks) +
-            len(action.missing_clauses) +
-            len(action.contradictions)
-        )
-        excess = max(0, actual_count - expected_count)
-        analysis_cost = 0.05 * excess
-        score = max(score - analysis_cost, 0.0)
+
 
         # Update state
         self._state.total_score = score

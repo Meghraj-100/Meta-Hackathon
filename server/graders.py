@@ -30,6 +30,57 @@ def _count_keyword_matches(text: str, keywords: List[str]) -> int:
     return sum(1 for kw in keywords if kw in normalized)
 
 
+def _calculate_gt_bonus(action: ContractAction, gt: Dict[str, Any], task: str, feedback_parts: List[str]) -> float:
+    """
+    Calculate a small bonus if the agent identifies exact ground truth items.
+    Updates feedback_parts with match info.
+    """
+    bonus = 0.0
+    
+    if task == "easy":
+        # 1. Match expected clauses
+        target_clauses = gt.get("target_clauses", [])
+        risk_refs = [r.get("clause_reference", "").lower() for r in action.identified_risks]
+        for target in target_clauses:
+            if any(target.lower() in ref for ref in risk_refs):
+                bonus += 0.05
+                feedback_parts.append(f"[PASS] Bonus: Ground Truth Match (Clause: {target})")
+                break # Cap bonus at one match
+
+        # 2. Match expected risk types
+        target_risks = gt.get("risk_types", [])
+        risk_types = [r.get("risk_type", "").lower() for r in action.identified_risks]
+        for target in target_risks:
+            if any(target.lower() in rt for rt in risk_types):
+                bonus += 0.05
+                feedback_parts.append(f"[PASS] Bonus: Ground Truth Match (Risk: {target})")
+                break
+
+    elif task == "medium":
+        # 1. Match expected missing clauses
+        target_missing = gt.get("missing_clause_types", [])
+        missing_types = [m.get("clause_type", "").lower() for m in action.missing_clauses]
+        for target in target_missing:
+            if any(target.lower() in mt for mt in missing_types):
+                bonus += 0.05
+                feedback_parts.append(f"[PASS] Bonus: Ground Truth Match (Missing: {target})")
+                break
+
+    elif task == "hard":
+        # 1. Match expected contradictory pairs
+        target_pairs = gt.get("contradictory_pairs", [])
+        for pair in target_pairs:
+            pa, pb = pair["clause_a"].lower(), pair["clause_b"].lower()
+            for ac in action.contradictions:
+                aca, acb = ac.get("clause_a", "").lower(), ac.get("clause_b", "").lower()
+                if (pa in aca and pb in acb) or (pa in acb and pb in aca):
+                    bonus += 0.10
+                    feedback_parts.append(f"[PASS] Bonus: Ground Truth Match (Contradiction: {pair['clause_a']} vs {pair['clause_b']})")
+                    return bonus # Return early for hard task after primary match
+    
+    return bonus
+
+
 def _extract_all_text(action: ContractAction) -> str:
     """Extract all text from an action for broad keyword matching."""
     parts = [action.overall_assessment]
@@ -122,7 +173,7 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
 
     # --- 1. Clause Identification (0.30) ---
     clause_score = 0.0
-    target_refs = ["section 7", "7.1", "7.2", "7.3", "limitation of liability"]
+    target_refs = gt.get("target_clauses", []) # Use Ground Truth
 
     # Check identified_risks for clause references
     risk_texts = " ".join(
@@ -130,17 +181,17 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
     )
     risk_normalized = _normalize(risk_texts)
 
-    if any(ref in risk_normalized for ref in target_refs):
+    if any(ref.lower() in risk_normalized for ref in target_refs):
         clause_score = 0.30
-        feedback_parts.append("[PASS] Correctly identified Section 7 (Limitation of Liability).")
-    elif any(ref in normalized_all for ref in target_refs):
+        feedback_parts.append(f"[PASS] Correctly identified {target_refs[0]} (Limitation of Liability).")
+    elif any(ref.lower() in normalized_all for ref in target_refs):
         clause_score = 0.20
-        feedback_parts.append("[PARTIAL] Mentioned Section 7 but not as a structured identified risk.")
+        feedback_parts.append(f"[PARTIAL] Mentioned {target_refs[0]} but not as a structured identified risk.")
     elif _text_contains_any(normalized_all, ["liability", "limitation"]):
         clause_score = 0.10
-        feedback_parts.append("[PARTIAL] Mentioned liability generally but did not pinpoint Section 7.")
+        feedback_parts.append("[PARTIAL] Mentioned liability generally but did not pinpoint the correct section.")
     else:
-        feedback_parts.append("[FAIL] Did not identify Section 7 (Limitation of Liability).")
+        feedback_parts.append(f"[FAIL] Did not identify {target_refs[0]} (Limitation of Liability).")
 
     score += clause_score
 
@@ -238,6 +289,9 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
                 f"[WARNING] Penalty: Multiple incorrect clause references ({len(wrong_sections)} irrelevant sections flagged)."
             )
 
+    # --- Ground Truth Validation Bonus ---
+    score += _calculate_gt_bonus(action, gt, task="easy", feedback_parts=feedback_parts)
+
     # =============================================================================
     # ADVANCED EVALUATION ADJUSTMENTS
     # =============================================================================
@@ -272,10 +326,7 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
     feedback_parts = []
 
     # --- Pre-compute specificity matches (needed by clause identification) ---
-    indemnify_keywords = [
-        "indemnif", "indemnity", "indemnification", "indemnities",
-        "hold harmless", "defend and hold",
-    ]
+    indemnify_keywords = gt.get("missing_clause_types", []) # Use Ground Truth
     specific_keywords = [
         "third-party claim", "third party claim", "third-party",
         "ip infringement", "intellectual property",
@@ -305,19 +356,19 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
         feedback_parts.append("[PARTIAL] Identified indemnification but lacking specifics.")
     elif found_anywhere:
         missing_score = 0.12
-        feedback_parts.append("[PARTIAL] Mentioned indemnification but not as a structured missing clause.")
+        feedback_parts.append(f"[PARTIAL] Mentioned {indemnify_keywords[0]} but not as a structured missing clause.")
     elif len(action.missing_clauses) > 0:
         # Agent identified something is missing but not indemnification
         missing_score = 0.10
-        feedback_parts.append("[PARTIAL] Identified missing clauses but not indemnification specifically.")
+        feedback_parts.append(f"[PARTIAL] Identified missing clauses but not {indemnify_keywords[0]} specifically.")
     else:
         # Check if they mentioned anything about missing protections
         missing_general = ["missing", "absent", "omit", "lacks", "no provision", "not included", "not present", "does not contain", "does not include"]
         if any(kw in normalized_all for kw in missing_general):
             missing_score = 0.08
-            feedback_parts.append("[PARTIAL] Noted missing elements generally but didn't identify indemnification.")
+            feedback_parts.append(f"[PARTIAL] Noted missing elements generally but didn't identify {indemnify_keywords[0]}.")
         else:
-            feedback_parts.append("[FAIL] Did not identify any missing clauses.")
+            feedback_parts.append(f"[FAIL] Did not identify any missing clauses ({indemnify_keywords[0]}).")
 
     score += missing_score
 
@@ -394,6 +445,9 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
 
     score += suggested_score
 
+    # --- Ground Truth Validation Bonus ---
+    score += _calculate_gt_bonus(action, gt, task="medium", feedback_parts=feedback_parts)
+
     # =============================================================================
     # ADVANCED EVALUATION ADJUSTMENTS
     # =============================================================================
@@ -447,10 +501,13 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
     )
     contradiction_normalized = _normalize(contradiction_texts)
 
-    has_section_4_in_contradictions = _has_section_ref(contradiction_texts, "4")
-    has_section_11_in_contradictions = _has_section_ref(contradiction_texts, "11")
-    has_section_4_anywhere = _has_section_ref(all_text, "4")
-    has_section_11_anywhere = _has_section_ref(all_text, "11")
+    # Use primary target sections from Ground Truth
+    target_a = gt["target_sections"]["primary"][0].replace("Section ", "")
+    target_b = gt["target_sections"]["primary"][1].replace("Section ", "")
+    has_sec_a_in_contradictions = _has_section_ref(contradiction_texts, target_a)
+    has_sec_b_in_contradictions = _has_section_ref(contradiction_texts, target_b)
+    has_sec_a_anywhere = _has_section_ref(all_text, target_a)
+    has_sec_b_anywhere = _has_section_ref(all_text, target_b)
     has_section_10_anywhere = _has_section_ref(all_text, "10")
 
     # --- 1. Primary Contradiction Found (0.30) ---
@@ -458,8 +515,8 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
     warranty_keywords = ["warranty", "warranties", "performance guarantee", "guarantee"]
     liability_keywords = ["limitation of liability", "liability cap", "liability limit", "damages cap"]
 
-    both_in_contradictions = has_section_4_in_contradictions and has_section_11_in_contradictions
-    both_anywhere = has_section_4_anywhere and has_section_11_anywhere
+    both_in_contradictions = has_sec_a_in_contradictions and has_sec_b_in_contradictions
+    both_anywhere = has_sec_a_anywhere and has_sec_b_anywhere
 
     # Also check for warranty vs liability language
     warranty_found = any(kw in normalized_all for kw in warranty_keywords)
@@ -467,24 +524,24 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
 
     if both_in_contradictions:
         primary_score = 0.30
-        feedback_parts.append("[PASS] Correctly identified Section 4 vs Section 11 contradiction in structured format.")
+        feedback_parts.append(f"[PASS] Correctly identified {gt['target_sections']['primary'][0]} vs {gt['target_sections']['primary'][1]} contradiction in structured format.")
     elif both_anywhere and len(action.contradictions) > 0:
         primary_score = 0.25
-        feedback_parts.append("[PARTIAL] Identified both sections with some contradiction analysis.")
+        feedback_parts.append(f"[PARTIAL] Identified both primary sections with some contradiction analysis.")
     elif both_anywhere:
         primary_score = 0.20
-        feedback_parts.append("[PARTIAL] Referenced both Section 4 and Section 11 but not as structured contradiction.")
-    elif (has_section_4_anywhere or has_section_11_anywhere) and warranty_found and liability_found:
+        feedback_parts.append(f"[PARTIAL] Referenced both {gt['target_sections']['primary'][0]} and {gt['target_sections']['primary'][1]} but not as structured contradiction.")
+    elif (has_sec_a_anywhere or has_sec_b_anywhere) and warranty_found and liability_found:
         primary_score = 0.15
         feedback_parts.append("[PARTIAL] Identified warranty vs liability tension but missing specific section pairing.")
     elif warranty_found and liability_found:
         primary_score = 0.10
         feedback_parts.append("[PARTIAL] Noted warranty and liability themes but didn't identify specific sections.")
-    elif has_section_4_anywhere or has_section_11_anywhere:
+    elif has_sec_a_anywhere or has_sec_b_anywhere:
         primary_score = 0.08
         feedback_parts.append("[PARTIAL] Found one of the conflicting sections but not the pairing.")
     else:
-        feedback_parts.append("[FAIL] Did not identify the primary contradiction (Section 4 vs Section 11).")
+        feedback_parts.append(f"[FAIL] Did not identify the primary contradiction ({gt['target_sections']['primary'][0]} vs {gt['target_sections']['primary'][1]}).")
 
     score += primary_score
 
@@ -496,7 +553,7 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
     elif both_anywhere:
         both_score = 0.14
         feedback_parts.append("[PARTIAL] Both sections mentioned but not clearly paired.")
-    elif has_section_4_anywhere or has_section_11_anywhere:
+    elif has_sec_a_anywhere or has_sec_b_anywhere:
         both_score = 0.07
         feedback_parts.append("[PARTIAL] Only one of the two contradictory sections identified.")
     else:
@@ -589,6 +646,9 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
             feedback_parts.append("[PARTIAL] Did not identify secondary conflicts (e.g., Section 10 vs 11).")
 
     score += secondary_score
+
+    # --- Ground Truth Validation Bonus ---
+    score += _calculate_gt_bonus(action, gt, task="hard", feedback_parts=feedback_parts)
 
     # =============================================================================
     # ADVANCED EVALUATION ADJUSTMENTS
