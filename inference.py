@@ -23,30 +23,34 @@ import os
 import sys
 import textwrap
 import traceback
-
 from typing import Any, Dict, List, Optional
 
 import requests
 from openai import OpenAI
-
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-# Resilience Fix: Use .get() with defaults to avoid KeyErrors if variables aren't injected.
+# Use exactly these variable names — judges inject these
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN")
 
 BENCHMARK = "legal_contract_risk_reviewer"
 TASKS = ["task_1_easy", "task_2_medium", "task_3_hard"]
 
-# Safety Check: Exit gracefully with a clear message if no credentials exist.
+# Validate
 if not API_KEY:
-    print("[ERROR] No API credentials found. Please set API_KEY or HF_TOKEN.", flush=True)
+    print("[ERROR] API_KEY not set", flush=True)
     sys.exit(1)
+
+# Initialize client exactly as judges specified
+client = OpenAI(
+    base_url=API_BASE_URL,
+    api_key=API_KEY          # Must use API_KEY for proxy monitoring
+)
 
 # Environment server URL (local by default, or HF Space URL)
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
@@ -55,13 +59,6 @@ ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 TEMPERATURE = 0.0  # Deterministic for reproducibility
 MAX_TOKENS = 4096
 SUCCESS_SCORE_THRESHOLD = 0.3  # normalized score in [0, 1]
-
-# ─── OpenAI Client Setup ────────────────────────────────────────────────────
-
-client = OpenAI(
-    api_key=API_KEY,
-    base_url=API_BASE_URL,
-)
 
 # ─── System Prompt ───────────────────────────────────────────────────────────
 
