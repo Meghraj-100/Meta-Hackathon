@@ -19,6 +19,26 @@ Legal contract review is a high-value, high-stakes real-world task where:
 - The task requires multi-step reasoning across long documents
 - There's a clear gradient of difficulty from obvious issues to subtle contradictions
 
+## 🧠 Why This Environment Matters
+
+This environment goes beyond simple classification tasks and simulates **professional legal reasoning workflows**.
+
+Unlike standard NLP benchmarks, agents must:
+- Interpret long-form legal text
+- Perform **cross-clause reasoning**
+- Detect implicit risks and missing protections
+- Produce structured, actionable outputs
+
+This creates a **high-signal evaluation setting** for LLMs, closer to real-world enterprise use cases such as:
+- Contract review automation
+- Risk compliance systems
+- Legal AI copilots
+
+The environment emphasizes:
+- **Precision over verbosity**
+- **Structured reasoning over free-form text**
+- **Deterministic, reproducible evaluation**
+
 ## 📋 Tasks (3 Difficulty Levels)
 
 | Task ID | Difficulty | Description | What the Agent Must Do |
@@ -86,6 +106,29 @@ On `step()`:
 - `score`: Numerical score (0.0-1.0)
 - `done`: Episode completion flag
 
+## ⚙️ Environment Workflow
+
+The interaction follows a structured agent-environment loop:
+
+```text
+RESET → Contract Provided
+↓
+Agent → Generates Structured Analysis (JSON Action)
+↓
+STEP → Environment Evaluates
+↓
+Grader → Computes Score (0.0–1.0)
+↓
+Feedback → Returned to Agent
+```
+
+### Key Design Choices
+
+- **Deterministic grading** ensures reproducibility
+- **Structured action space** enforces disciplined reasoning
+- **Partial rewards** guide agent improvement
+- **No LLM-as-judge** → avoids variability and cost
+
 ## 🚀 Setup Instructions
 
 ### Prerequisites
@@ -141,7 +184,7 @@ openenv push --repo-id YOUR_USERNAME/legal-contract-risk-reviewer
 
 ## 📊 Baseline Scores
 
-Baseline scores using `gpt-4o-mini` with `temperature=0`:
+Baseline scores using an OpenAI-compatible model (e.g., Qwen via Hugging Face router) with `temperature=0`:
 
 | Task | Difficulty | Score | Description |
 |------|-----------|-------|-------------|
@@ -150,6 +193,25 @@ Baseline scores using `gpt-4o-mini` with `temperature=0`:
 | `task_3_hard` | Hard | ~0.40-0.65 | Contradictory clauses (challenging) |
 
 *Scores may vary slightly based on model version and API endpoint.*
+
+## 🔒 Design Principles
+
+This environment is designed with the following principles:
+
+- **Determinism**  
+  All grading is rule-based and reproducible (no stochastic evaluation)
+
+- **Realism**  
+  Tasks reflect actual legal review scenarios encountered in practice
+
+- **Structured Outputs**  
+  Agents must produce JSON outputs, not free-form text
+
+- **Robustness**  
+  Penalizes hallucinations, over-verbosity, and false positives
+
+- **Efficiency Awareness**  
+  Encourages concise, high-quality analysis over excessive output
 
 ## 🏗️ Project Structure
 
@@ -176,10 +238,10 @@ legal-contract-risk-reviewer/
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | Yes | — | API key for LLM inference |
-| `API_BASE_URL` | Yes | `https://api.openai.com/v1` | LLM API endpoint |
-| `MODEL_NAME` | Yes | `gpt-4o-mini` | Model identifier |
-| `HF_TOKEN` | For deploy | — | Hugging Face token |
+| `HF_TOKEN` | Yes | — | Hugging Face API token (used as API key) |
+| `API_BASE_URL` | Yes | `https://router.huggingface.co/v1` | LLM API endpoint |
+| `MODEL_NAME` | Yes | `Qwen/Qwen2.5-72B-Instruct` | Model identifier |
+| `OPENAI_API_KEY` | Optional | — | Alias for HF_TOKEN (compatibility) |
 | `ENABLE_WEB_INTERFACE` | No | `false` | Enable Gradio UI at `/web` |
 | `ENV_BASE_URL` | No | `http://localhost:8000` | Environment server URL |
 
