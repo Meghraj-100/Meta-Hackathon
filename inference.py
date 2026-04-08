@@ -23,17 +23,22 @@ import os
 import sys
 import textwrap
 import traceback
+
 from typing import Any, Dict, List, Optional
 
 import requests
 from openai import OpenAI
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o-mini"
-HF_TOKEN = os.getenv("HF_TOKEN", "")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 BENCHMARK = "legal_contract_risk_reviewer"
 TASKS = ["task_1_easy", "task_2_medium", "task_3_hard"]
