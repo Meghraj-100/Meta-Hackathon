@@ -35,10 +35,10 @@ load_dotenv()
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY") or os.environ.get("HF_TOKEN")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
+HF_TOKEN = os.environ.get("HF_TOKEN")
 
 BENCHMARK = "legal_contract_risk_reviewer"
 TASKS = ["task_1_easy", "task_2_medium", "task_3_hard"]
