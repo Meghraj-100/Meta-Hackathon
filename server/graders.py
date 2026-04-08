@@ -89,7 +89,7 @@ def _apply_advanced_adjustments(
 
     # 6. Difficulty skew to ensure scores reflect difficulty curve
     if task == "easy":
-        score += 0.35
+        score += 0.50
     elif task == "medium":
         score += 0.10
     elif task == "hard":
