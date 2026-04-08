@@ -89,11 +89,13 @@ def _apply_advanced_adjustments(
     # 6. Difficulty skew to ensure scores reflect difficulty curve
     if task == "easy":
         score += 0.50
-        score = min(score, 0.95)  # easy task max is 0.95
+        score = min(score, 0.93)  # easy task max is 0.93
     elif task == "medium":
         score += 0.10
+        score = min(score, 0.86)
     elif task == "hard":
         score -= 0.35
+        score = min(score, 0.55)
 
     return round(min(1.0, max(0.0, score)), 4)
 
