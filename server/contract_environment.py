@@ -205,9 +205,6 @@ class ContractRiskEnvironment(Environment):
         # Grade the action
         task_id = self._state.current_task
         score, feedback = grade_task(task_id, action)
-
-
-
         # Update state
         self._state.total_score = score
         self._state.is_done = True
