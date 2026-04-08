@@ -6,6 +6,7 @@ Simulates a legal contract review task where an AI agent must identify
 risky terms, missing clauses, and contradictions in legal contracts.
 """
 
+import random
 import uuid
 from typing import Any, Optional
 
@@ -52,6 +53,7 @@ class ContractRiskEnvironment(Environment):
         self._state = ContractState()
         self._current_task_data = None
         self._episode_done = False
+        self._history = []
 
     def reset(
         self,
@@ -80,9 +82,14 @@ class ContractRiskEnvironment(Environment):
         if isinstance(task_id, dict):
             task_id = task_id.get("task_id", "task_1_easy")
 
+        # Support for seeding
+        if seed is not None:
+            random.seed(seed)
+
         task_data = get_task(task_id)
         self._current_task_data = task_data
         self._episode_done = False
+        self._history = []
 
         gt = task_data["ground_truth"]
 
@@ -107,6 +114,13 @@ class ContractRiskEnvironment(Environment):
             metadata={
                 "available_tasks": get_all_task_ids(),
                 "status": "ready",
+                "expected_output_format": {
+                    "identified_risks": "list of risk objects",
+                    "missing_clauses": "list of missing clause objects",
+                    "contradictions": "list of contradictions",
+                    "overall_assessment": "string summary",
+                    "recommendations": "list of recommendations"
+                }
             },
         )
 
@@ -173,12 +187,32 @@ class ContractRiskEnvironment(Environment):
                     metadata={"error": "invalid_action_type"},
                 )
 
+        # Anti-Hack: Reject empty actions
+        if not action.identified_risks and not action.missing_clauses and not action.contradictions:
+            return ContractObservation(
+                feedback="Empty analysis provided. Please identify risks or issues.",
+                score=0.0,
+                done=True,
+                metadata={"error": "empty_action"},
+            )
+
+        # Track history
+        self._history.append(action)
+
         # Increment step count
         self._state.step_count += 1
 
         # Grade the action
         task_id = self._state.current_task
         score, feedback = grade_task(task_id, action)
+
+        # Cost Awareness mechanic (penalize 0.05 per item to prevent spamming)
+        analysis_cost = 0.05 * (
+            len(action.identified_risks) +
+            len(action.missing_clauses) +
+            len(action.contradictions)
+        )
+        score = max(score - analysis_cost, 0.0)
 
         # Update state
         self._state.total_score = score
@@ -199,6 +233,8 @@ class ContractRiskEnvironment(Environment):
                 "task_id": task_id,
                 "difficulty": self._state.current_difficulty,
                 "steps_taken": self._state.step_count,
+                "history_length": len(self._history),
+                "analysis_cost": float(round(analysis_cost, 3)),
             },
         )
 
