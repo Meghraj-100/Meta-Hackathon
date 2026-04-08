@@ -1,23 +1,3 @@
-"""
-Inference Script for Legal Contract Risk Reviewer
-===================================
-MANDATORY
-- Before submitting, ensure the following variables are defined in your environment configuration:
-    API_BASE_URL   The API endpoint for the LLM.
-    MODEL_NAME     The model identifier to use for inference.
-    HF_TOKEN       Your Hugging Face / API key.
-
-- The inference script must be named `inference.py` and placed in the root directory of the project
-- Participants must use OpenAI Client for all LLM calls using above variables
-
-STDOUT FORMAT
-- The script must emit exactly three line types to stdout, in this order:
-
-    [START] task=<task_name> env=<benchmark> model=<model_name>
-    [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
-    [END]   success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
-"""
-
 import json
 import os
 import sys
@@ -27,9 +7,6 @@ from typing import Any, Dict, List, Optional
 
 import requests
 from openai import OpenAI
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
