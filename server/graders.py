@@ -190,6 +190,40 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
                 f"⚠ Penalty: Multiple incorrect clause references ({len(wrong_sections)} irrelevant sections flagged)."
             )
 
+    # =============================================================================
+    # ADVANCED EVALUATION ADJUSTMENTS (ADD THIS BLOCK)
+    # =============================================================================
+
+    # 1. Overconfidence / verbosity penalty
+    word_count = len(_normalize(all_text).split())
+    if word_count > 250:
+        penalty = min(0.05, score * 0.1)
+        score -= penalty
+        feedback_parts.append("⚠ Penalty: Overly verbose response reduces clarity.")
+
+    # 2. False positive penalty (too many risks = low precision)
+    if len(action.identified_risks) > 5:
+        penalty = min(0.08, score * 0.12)
+        score -= penalty
+        feedback_parts.append("⚠ Penalty: Too many risks identified (possible false positives).")
+
+    # 3. Missing section reference penalty (lack of grounding)
+    if "section" not in _normalize(all_text):
+        penalty = min(0.05, score * 0.1)
+        score -= penalty
+        feedback_parts.append("⚠ Penalty: No specific clause references provided.")
+
+    # 4. Structured output bonus (good format)
+    if isinstance(action.identified_risks, list) and len(action.identified_risks) > 0:
+        score += 0.03
+        feedback_parts.append("✓ Bonus: Proper structured output format.")
+
+    # 5. Cross-clause reasoning bonus (advanced thinking)
+    if action.contradictions and len(action.contradictions) > 0:
+        score += min(0.05, 1.0 - score)
+        feedback_parts.append("✓ Bonus: Identified cross-clause reasoning.")
+
+    # Clamp final score safely
     score = round(min(1.0, max(0.0, score)), 4)
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
     return score, feedback
@@ -337,6 +371,40 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
 
     score += suggested_score
 
+    # =============================================================================
+    # ADVANCED EVALUATION ADJUSTMENTS (ADD THIS BLOCK)
+    # =============================================================================
+
+    # 1. Overconfidence / verbosity penalty
+    word_count = len(_normalize(all_text).split())
+    if word_count > 250:
+        penalty = min(0.05, score * 0.1)
+        score -= penalty
+        feedback_parts.append("⚠ Penalty: Overly verbose response reduces clarity.")
+
+    # 2. False positive penalty (too many risks = low precision)
+    if len(action.identified_risks) > 5:
+        penalty = min(0.08, score * 0.12)
+        score -= penalty
+        feedback_parts.append("⚠ Penalty: Too many risks identified (possible false positives).")
+
+    # 3. Missing section reference penalty (lack of grounding)
+    if "section" not in _normalize(all_text):
+        penalty = min(0.05, score * 0.1)
+        score -= penalty
+        feedback_parts.append("⚠ Penalty: No specific clause references provided.")
+
+    # 4. Structured output bonus (good format)
+    if isinstance(action.identified_risks, list) and len(action.identified_risks) > 0:
+        score += 0.03
+        feedback_parts.append("✓ Bonus: Proper structured output format.")
+
+    # 5. Cross-clause reasoning bonus (advanced thinking)
+    if action.contradictions and len(action.contradictions) > 0:
+        score += min(0.05, 1.0 - score)
+        feedback_parts.append("✓ Bonus: Identified cross-clause reasoning.")
+
+    # Clamp final score safely
     score = round(min(1.0, max(0.0, score)), 4)
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
     return score, feedback
@@ -528,6 +596,40 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
 
     score += secondary_score
 
+    # =============================================================================
+    # ADVANCED EVALUATION ADJUSTMENTS (ADD THIS BLOCK)
+    # =============================================================================
+
+    # 1. Overconfidence / verbosity penalty
+    word_count = len(_normalize(all_text).split())
+    if word_count > 250:
+        penalty = min(0.05, score * 0.1)
+        score -= penalty
+        feedback_parts.append("⚠ Penalty: Overly verbose response reduces clarity.")
+
+    # 2. False positive penalty (too many risks = low precision)
+    if len(action.identified_risks) > 5:
+        penalty = min(0.08, score * 0.12)
+        score -= penalty
+        feedback_parts.append("⚠ Penalty: Too many risks identified (possible false positives).")
+
+    # 3. Missing section reference penalty (lack of grounding)
+    if "section" not in _normalize(all_text):
+        penalty = min(0.05, score * 0.1)
+        score -= penalty
+        feedback_parts.append("⚠ Penalty: No specific clause references provided.")
+
+    # 4. Structured output bonus (good format)
+    if isinstance(action.identified_risks, list) and len(action.identified_risks) > 0:
+        score += 0.03
+        feedback_parts.append("✓ Bonus: Proper structured output format.")
+
+    # 5. Cross-clause reasoning bonus (advanced thinking)
+    if action.contradictions and len(action.contradictions) > 0:
+        score += min(0.05, 1.0 - score)
+        feedback_parts.append("✓ Bonus: Identified cross-clause reasoning.")
+
+    # Clamp final score safely
     score = round(min(1.0, max(0.0, score)), 4)
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
     return score, feedback
