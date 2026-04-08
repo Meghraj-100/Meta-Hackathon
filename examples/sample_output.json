@@ -1,0 +1,16 @@
+{
+  "identified_risks": [
+    {
+      "clause_reference": "Section 7. Limitation of Liability",
+      "risk_type": "One-Sided Liability Exclusions",
+      "explanation": "The clause completely protects the Consultant from all liability, including gross negligence, while offering no mutual protection for the Client."
+    }
+  ],
+  "missing_clauses": [],
+  "contradictions": [],
+  "overall_assessment": "The contract is generally standard, but Section 7 is highly problematic and exposes the client to significant unrecoverable risk.",
+  "recommendations": [
+    "Revise Section 7 to be mutual.",
+    "Explicitly carve out gross negligence and fraud from the liability limitations."
+  ]
+}
