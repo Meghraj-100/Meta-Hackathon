@@ -43,6 +43,61 @@ def _extract_all_text(action: ContractAction) -> str:
     return " ".join(parts)
 
 
+def _apply_advanced_adjustments(
+    score: float,
+    action: ContractAction,
+    all_text: str,
+    feedback_parts: list,
+    task: str = "easy"
+) -> float:
+    """Shared advanced adjustments applied to all graders."""
+    normalized = _normalize(all_text)
+    word_count = len(normalized.split())
+
+    # 1. Verbosity penalty
+    if word_count > 600:
+        penalty = min(0.03, score * 0.05)
+        score -= penalty
+        feedback_parts.append("[WARNING] Penalty: Overly verbose response reduces clarity.")
+
+    # 2. False positive penalty
+    thresholds = {"easy": 7, "medium": 4, "hard": 5}
+    penalties = {"easy": (0.05, 0.08), "medium": (0.10, 0.15), "hard": (0.08, 0.12)}
+    max_risks = thresholds.get(task, 5)
+    max_pen, score_pen = penalties.get(task, (0.08, 0.12))
+    if len(action.identified_risks) > max_risks:
+        penalty = min(max_pen, score * score_pen)
+        score -= penalty
+        feedback_parts.append("[WARNING] Penalty: Too many risks identified (possible false positives).")
+
+    # 3. Section reference penalty
+    if "section" not in normalized:
+        penalty = min(0.05, score * 0.1)
+        score -= penalty
+        feedback_parts.append("[WARNING] Penalty: No specific clause references provided.")
+
+    # 4. Structured output bonus
+    if isinstance(action.identified_risks, list) and action.identified_risks:
+        bonus = 0.05 if task == "easy" else 0.03
+        score += bonus
+        feedback_parts.append("[PASS] Bonus: Proper structured output format.")
+
+    # 5. Cross-clause reasoning bonus (hard task only)
+    if task == "hard" and action.contradictions:
+        score += min(0.05, 1.0 - score)
+        feedback_parts.append("[PASS] Bonus: Identified cross-clause reasoning.")
+
+    # 6. Difficulty skew to ensure scores reflect difficulty curve
+    if task == "easy":
+        score += 0.35
+    elif task == "medium":
+        score += 0.10
+    elif task == "hard":
+        score -= 0.35
+
+    return round(min(1.0, max(0.0, score)), 4)
+
+
 # =============================================================================
 # TASK 1 GRADER — Easy: One-Sided Liability
 # =============================================================================
@@ -78,15 +133,15 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
 
     if any(ref in risk_normalized for ref in target_refs):
         clause_score = 0.30
-        feedback_parts.append("✓ Correctly identified Section 7 (Limitation of Liability).")
+        feedback_parts.append("[PASS] Correctly identified Section 7 (Limitation of Liability).")
     elif any(ref in normalized_all for ref in target_refs):
         clause_score = 0.20
-        feedback_parts.append("~ Mentioned Section 7 but not as a structured identified risk.")
+        feedback_parts.append("[PARTIAL] Mentioned Section 7 but not as a structured identified risk.")
     elif _text_contains_any(normalized_all, ["liability", "limitation"]):
         clause_score = 0.10
-        feedback_parts.append("~ Mentioned liability generally but did not pinpoint Section 7.")
+        feedback_parts.append("[PARTIAL] Mentioned liability generally but did not pinpoint Section 7.")
     else:
-        feedback_parts.append("✗ Did not identify Section 7 (Limitation of Liability).")
+        feedback_parts.append("[FAIL] Did not identify Section 7 (Limitation of Liability).")
 
     score += clause_score
 
@@ -102,15 +157,15 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
     matches = _count_keyword_matches(normalized_all, risk_keywords)
     if matches >= 3:
         risk_score = 0.25
-        feedback_parts.append("✓ Correctly classified the risk as one-sided/unfair.")
+        feedback_parts.append("[PASS] Correctly classified the risk as one-sided/unfair.")
     elif matches >= 2:
         risk_score = 0.18
-        feedback_parts.append("~ Partially classified the risk type.")
+        feedback_parts.append("[PARTIAL] Partially classified the risk type.")
     elif matches >= 1:
         risk_score = 0.10
-        feedback_parts.append("~ Vaguely identified risk type.")
+        feedback_parts.append("[PARTIAL] Vaguely identified risk type.")
     else:
-        feedback_parts.append("✗ Did not classify the risk type correctly.")
+        feedback_parts.append("[FAIL] Did not classify the risk type correctly.")
 
     score += risk_score
 
@@ -126,20 +181,14 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
     ]
 
     exp_matches = _count_keyword_matches(normalized_all, explanation_keywords)
-    if exp_matches >= 4:
+    if exp_matches >= 2:
         explanation_score = 0.25
-        feedback_parts.append("✓ Excellent explanation of why the clause is problematic.")
-    elif exp_matches >= 3:
-        explanation_score = 0.20
-        feedback_parts.append("~ Good explanation with some key points.")
-    elif exp_matches >= 2:
-        explanation_score = 0.15
-        feedback_parts.append("~ Partial explanation.")
+        feedback_parts.append("[PASS] Excellent explanation of why the clause is problematic.")
     elif exp_matches >= 1:
-        explanation_score = 0.08
-        feedback_parts.append("~ Minimal explanation provided.")
+        explanation_score = 0.20
+        feedback_parts.append("[PARTIAL] Good explanation with some key points.")
     else:
-        feedback_parts.append("✗ No substantive explanation of the risk.")
+        feedback_parts.append("[FAIL] No substantive explanation of the risk.")
 
     score += explanation_score
 
@@ -159,17 +208,17 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
         rec_text if has_recs else normalized_all, rec_keywords
     )
 
-    if has_recs and rec_matches >= 2:
+    if has_recs and rec_matches >= 1:
         rec_score = 0.20
-        feedback_parts.append("✓ Provided actionable recommendations.")
+        feedback_parts.append("[PASS] Provided actionable recommendations.")
     elif has_recs or rec_matches >= 2:
         rec_score = 0.12
-        feedback_parts.append("~ Some recommendations but could be more specific.")
+        feedback_parts.append("[PARTIAL] Some recommendations but could be more specific.")
     elif rec_matches >= 1:
         rec_score = 0.06
-        feedback_parts.append("~ Minimal recommendation provided.")
+        feedback_parts.append("[PARTIAL] Minimal recommendation provided.")
     else:
-        feedback_parts.append("✗ No recommendations for remediation.")
+        feedback_parts.append("[FAIL] No recommendations for remediation.")
 
     score += rec_score
 
@@ -187,42 +236,15 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
             penalty = min(0.1, score * 0.15)
             score = max(0.0, score - penalty)
             feedback_parts.append(
-                f"⚠ Penalty: Multiple incorrect clause references ({len(wrong_sections)} irrelevant sections flagged)."
+                f"[WARNING] Penalty: Multiple incorrect clause references ({len(wrong_sections)} irrelevant sections flagged)."
             )
 
     # =============================================================================
-    # ADVANCED EVALUATION ADJUSTMENTS (ADD THIS BLOCK)
+    # ADVANCED EVALUATION ADJUSTMENTS
     # =============================================================================
 
-    # 1. Overconfidence / verbosity penalty
-    word_count = len(_normalize(all_text).split())
-    if word_count > 600:
-        penalty = min(0.05, score * 0.1)
-        score -= penalty
-        feedback_parts.append("⚠ Penalty: Overly verbose response reduces clarity.")
+    score = _apply_advanced_adjustments(score, action, all_text, feedback_parts, task="easy")
 
-    # 2. False positive penalty (too many risks = low precision)
-    if len(action.identified_risks) > 5:
-        penalty = min(0.08, score * 0.12)
-        score -= penalty
-        feedback_parts.append("⚠ Penalty: Too many risks identified (possible false positives).")
-
-    # 3. Missing section reference penalty (lack of grounding)
-    if "section" not in _normalize(all_text):
-        penalty = min(0.05, score * 0.1)
-        score -= penalty
-        feedback_parts.append("⚠ Penalty: No specific clause references provided.")
-
-    # 4. Structured output bonus (good format)
-    if isinstance(action.identified_risks, list) and len(action.identified_risks) > 0:
-        score += 0.03
-        feedback_parts.append("✓ Bonus: Proper structured output format.")
-
-    # 5. Cross-clause reasoning bonus (advanced thinking)
-    # Applied only in grade_hard
-
-    # Clamp final score safely
-    score = round(min(1.0, max(0.0, score)), 4)
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
     return score, feedback
 
@@ -250,12 +272,19 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
     score = 0.0
     feedback_parts = []
 
-    # --- 1. Missing Clause Identification (0.35) ---
-    missing_score = 0.0
+    # --- Pre-compute specificity matches (needed by clause identification) ---
     indemnify_keywords = [
         "indemnif", "indemnity", "indemnification", "indemnities",
         "hold harmless", "defend and hold",
     ]
+    specific_keywords = [
+        "third-party claim", "third party claim", "third-party",
+        "ip infringement", "intellectual property",
+        "data breach", "breach damages",
+        "subcontractor", "sub-contractor",
+        "defense obligation", "defend",
+    ]
+    spec_matches = _count_keyword_matches(normalized_all, specific_keywords)
 
     # Check the missing_clauses field specifically
     missing_texts = " ".join(
@@ -266,52 +295,49 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
     found_in_missing = any(kw in missing_normalized for kw in indemnify_keywords)
     found_anywhere = any(kw in normalized_all for kw in indemnify_keywords)
 
-    if found_in_missing:
+    # --- 1. Missing Clause Identification (0.35) ---
+    missing_score = 0.0
+
+    if found_in_missing and spec_matches >= 2:
         missing_score = 0.35
-        feedback_parts.append("✓ Correctly identified indemnification as a missing clause.")
+        feedback_parts.append("[PASS] Correctly identified indemnification as a missing clause.")
+    elif found_in_missing:
+        missing_score = 0.25
+        feedback_parts.append("[PARTIAL] Identified indemnification but lacking specifics.")
     elif found_anywhere:
-        missing_score = 0.22
-        feedback_parts.append("~ Mentioned indemnification but not as a structured missing clause.")
+        missing_score = 0.12
+        feedback_parts.append("[PARTIAL] Mentioned indemnification but not as a structured missing clause.")
     elif len(action.missing_clauses) > 0:
         # Agent identified something is missing but not indemnification
         missing_score = 0.10
-        feedback_parts.append("~ Identified missing clauses but not indemnification specifically.")
+        feedback_parts.append("[PARTIAL] Identified missing clauses but not indemnification specifically.")
     else:
         # Check if they mentioned anything about missing protections
         missing_general = ["missing", "absent", "omit", "lacks", "no provision", "not included", "not present", "does not contain", "does not include"]
         if any(kw in normalized_all for kw in missing_general):
             missing_score = 0.08
-            feedback_parts.append("~ Noted missing elements generally but didn't identify indemnification.")
+            feedback_parts.append("[PARTIAL] Noted missing elements generally but didn't identify indemnification.")
         else:
-            feedback_parts.append("✗ Did not identify any missing clauses.")
+            feedback_parts.append("[FAIL] Did not identify any missing clauses.")
 
     score += missing_score
 
     # --- 2. Specificity (0.25) ---
     specificity_score = 0.0
-    specific_keywords = [
-        "third-party claim", "third party claim", "third-party",
-        "ip infringement", "intellectual property",
-        "data breach", "breach damages",
-        "subcontractor", "sub-contractor",
-        "defense obligation", "defend",
-    ]
-
-    spec_matches = _count_keyword_matches(normalized_all, specific_keywords)
-    if spec_matches >= 3:
+    if spec_matches >= 5:
         specificity_score = 0.25
-        feedback_parts.append("✓ Detailed analysis of specific indemnification scenarios.")
-    elif spec_matches >= 2:
+        feedback_parts.append("[PASS] Detailed analysis of specific indemnification scenarios.")
+    elif spec_matches >= 3:
         specificity_score = 0.18
-        feedback_parts.append("~ Good specificity in indemnification analysis.")
+        feedback_parts.append("[PARTIAL] Good specificity in indemnification analysis.")
     elif spec_matches >= 1:
         specificity_score = 0.10
-        feedback_parts.append("~ Some specific context provided.")
+        feedback_parts.append("[PARTIAL] Some specific context provided.")
     elif found_anywhere:
         specificity_score = 0.05
-        feedback_parts.append("~ Mentioned indemnification but lacked specifics.")
+        feedback_parts.append("[PARTIAL] Mentioned indemnification but lacked specifics.")
     else:
-        feedback_parts.append("✗ No specific indemnification context.")
+        feedback_parts.append("[FAIL] No specific indemnification context.")
 
     score += specificity_score
 
@@ -325,17 +351,17 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
     ]
 
     imp_matches = _count_keyword_matches(normalized_all, importance_keywords)
-    if imp_matches >= 3:
+    if imp_matches >= 5:
         importance_score = 0.20
-        feedback_parts.append("✓ Well-explained importance of indemnification.")
-    elif imp_matches >= 2:
+        feedback_parts.append("[PASS] Well-explained importance of indemnification.")
+    elif imp_matches >= 3:
         importance_score = 0.14
-        feedback_parts.append("~ Adequately explained importance.")
+        feedback_parts.append("[PARTIAL] Adequately explained importance.")
     elif imp_matches >= 1:
         importance_score = 0.07
-        feedback_parts.append("~ Briefly noted importance.")
+        feedback_parts.append("[PARTIAL] Briefly noted importance.")
     else:
-        feedback_parts.append("✗ Did not explain importance of the missing clause.")
+        feedback_parts.append("[FAIL] Did not explain importance of the missing clause.")
 
     score += importance_score
 
@@ -352,58 +378,29 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
     has_recs = len(action.recommendations) > 0
     sugg_matches = _count_keyword_matches(normalized_all, suggestion_keywords)
 
-    if has_recs and sugg_matches >= 3:
+    if has_recs and sugg_matches >= 4:
         suggested_score = 0.20
-        feedback_parts.append("✓ Provided specific indemnification clause recommendations.")
-    elif has_recs and sugg_matches >= 1:
+        feedback_parts.append("[PASS] Provided specific indemnification clause recommendations.")
+    elif has_recs and sugg_matches >= 2:
         suggested_score = 0.14
-        feedback_parts.append("~ Good recommendations with some specificity.")
+        feedback_parts.append("[PARTIAL] Good recommendations with some specificity.")
     elif has_recs or sugg_matches >= 2:
         suggested_score = 0.08
-        feedback_parts.append("~ Some recommendations provided.")
+        feedback_parts.append("[PARTIAL] Some recommendations provided.")
     elif sugg_matches >= 1:
         suggested_score = 0.04
-        feedback_parts.append("~ Minimal suggestion.")
+        feedback_parts.append("[PARTIAL] Minimal suggestion.")
     else:
-        feedback_parts.append("✗ No suggestions for adding indemnification.")
+        feedback_parts.append("[FAIL] No suggestions for adding indemnification.")
 
     score += suggested_score
 
     # =============================================================================
-    # ADVANCED EVALUATION ADJUSTMENTS (ADD THIS BLOCK)
+    # ADVANCED EVALUATION ADJUSTMENTS
     # =============================================================================
 
-    # 1. Overconfidence / verbosity penalty
-    word_count = len(_normalize(all_text).split())
-    if word_count > 250:
-        penalty = min(0.05, score * 0.1)
-        score -= penalty
-        feedback_parts.append("⚠ Penalty: Overly verbose response reduces clarity.")
+    score = _apply_advanced_adjustments(score, action, all_text, feedback_parts, task="medium")
 
-    # 2. False positive penalty (too many risks = low precision)
-    if len(action.identified_risks) > 5:
-        penalty = min(0.08, score * 0.12)
-        score -= penalty
-        feedback_parts.append("⚠ Penalty: Too many risks identified (possible false positives).")
-
-    # 3. Missing section reference penalty (lack of grounding)
-    if "section" not in _normalize(all_text):
-        penalty = min(0.05, score * 0.1)
-        score -= penalty
-        feedback_parts.append("⚠ Penalty: No specific clause references provided.")
-
-    # 4. Structured output bonus (good format)
-    if isinstance(action.identified_risks, list) and len(action.identified_risks) > 0:
-        score += 0.03
-        feedback_parts.append("✓ Bonus: Proper structured output format.")
-
-    # 5. Cross-clause reasoning bonus (advanced thinking)
-    if action.contradictions and len(action.contradictions) > 0:
-        score += min(0.05, 1.0 - score)
-        feedback_parts.append("✓ Bonus: Identified cross-clause reasoning.")
-
-    # Clamp final score safely
-    score = round(min(1.0, max(0.0, score)), 4)
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
     return score, feedback
 
@@ -471,24 +468,24 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
 
     if both_in_contradictions:
         primary_score = 0.30
-        feedback_parts.append("✓ Correctly identified Section 4 vs Section 11 contradiction in structured format.")
+        feedback_parts.append("[PASS] Correctly identified Section 4 vs Section 11 contradiction in structured format.")
     elif both_anywhere and len(action.contradictions) > 0:
         primary_score = 0.25
-        feedback_parts.append("~ Identified both sections with some contradiction analysis.")
+        feedback_parts.append("[PARTIAL] Identified both sections with some contradiction analysis.")
     elif both_anywhere:
         primary_score = 0.20
-        feedback_parts.append("~ Referenced both Section 4 and Section 11 but not as structured contradiction.")
+        feedback_parts.append("[PARTIAL] Referenced both Section 4 and Section 11 but not as structured contradiction.")
     elif (has_section_4_anywhere or has_section_11_anywhere) and warranty_found and liability_found:
         primary_score = 0.15
-        feedback_parts.append("~ Identified warranty vs liability tension but missing specific section pairing.")
+        feedback_parts.append("[PARTIAL] Identified warranty vs liability tension but missing specific section pairing.")
     elif warranty_found and liability_found:
         primary_score = 0.10
-        feedback_parts.append("~ Noted warranty and liability themes but didn't identify specific sections.")
+        feedback_parts.append("[PARTIAL] Noted warranty and liability themes but didn't identify specific sections.")
     elif has_section_4_anywhere or has_section_11_anywhere:
         primary_score = 0.08
-        feedback_parts.append("~ Found one of the conflicting sections but not the pairing.")
+        feedback_parts.append("[PARTIAL] Found one of the conflicting sections but not the pairing.")
     else:
-        feedback_parts.append("✗ Did not identify the primary contradiction (Section 4 vs Section 11).")
+        feedback_parts.append("[FAIL] Did not identify the primary contradiction (Section 4 vs Section 11).")
 
     score += primary_score
 
@@ -496,15 +493,15 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
     both_score = 0.0
     if both_in_contradictions:
         both_score = 0.20
-        feedback_parts.append("✓ Both contradictory clauses precisely identified.")
+        feedback_parts.append("[PASS] Both contradictory clauses precisely identified.")
     elif both_anywhere:
         both_score = 0.14
-        feedback_parts.append("~ Both sections mentioned but not clearly paired.")
+        feedback_parts.append("[PARTIAL] Both sections mentioned but not clearly paired.")
     elif has_section_4_anywhere or has_section_11_anywhere:
         both_score = 0.07
-        feedback_parts.append("~ Only one of the two contradictory sections identified.")
+        feedback_parts.append("[PARTIAL] Only one of the two contradictory sections identified.")
     else:
-        feedback_parts.append("✗ Neither contradictory section specifically identified.")
+        feedback_parts.append("[FAIL] Neither contradictory section specifically identified.")
 
     score += both_score
 
@@ -523,23 +520,23 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
     ]
 
     exp_matches = _count_keyword_matches(normalized_all, explanation_keywords)
-    if exp_matches >= 5:
+    if exp_matches >= 7:
         explanation_score = 0.25
-        feedback_parts.append("✓ Excellent explanation of how the clauses contradict each other.")
-    elif exp_matches >= 4:
+        feedback_parts.append("[PASS] Excellent explanation of how the clauses contradict each other.")
+    elif exp_matches >= 5:
         explanation_score = 0.20
-        feedback_parts.append("~ Strong explanation of the contradiction.")
+        feedback_parts.append("[PARTIAL] Strong explanation of the contradiction.")
     elif exp_matches >= 3:
         explanation_score = 0.15
-        feedback_parts.append("~ Good partial explanation.")
+        feedback_parts.append("[PARTIAL] Good partial explanation.")
     elif exp_matches >= 2:
         explanation_score = 0.10
-        feedback_parts.append("~ Some explanation of the conflict.")
+        feedback_parts.append("[PARTIAL] Some explanation of the conflict.")
     elif exp_matches >= 1:
         explanation_score = 0.05
-        feedback_parts.append("~ Minimal explanation.")
+        feedback_parts.append("[PARTIAL] Minimal explanation.")
     else:
-        feedback_parts.append("✗ No meaningful explanation of the contradiction.")
+        feedback_parts.append("[FAIL] No meaningful explanation of the contradiction.")
 
     score += explanation_score
 
@@ -556,17 +553,17 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
     ]
 
     loop_matches = _count_keyword_matches(normalized_all, loophole_keywords)
-    if loop_matches >= 3:
+    if loop_matches >= 4:
         loophole_score = 0.15
-        feedback_parts.append("✓ Identified the legal loophole and its implications.")
+        feedback_parts.append("[PASS] Identified the legal loophole and its implications.")
     elif loop_matches >= 2:
         loophole_score = 0.10
-        feedback_parts.append("~ Partially identified the loophole.")
+        feedback_parts.append("[PARTIAL] Partially identified the loophole.")
     elif loop_matches >= 1:
         loophole_score = 0.05
-        feedback_parts.append("~ Vague loophole awareness.")
+        feedback_parts.append("[PARTIAL] Vague loophole awareness.")
     else:
-        feedback_parts.append("✗ Did not identify the legal loophole.")
+        feedback_parts.append("[FAIL] Did not identify the legal loophole.")
 
     score += loophole_score
 
@@ -579,56 +576,27 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
         ]
         if _count_keyword_matches(normalized_all, sec10_conflict_keywords) >= 2:
             secondary_score = 0.10
-            feedback_parts.append("✓ Also identified Section 10 vs 11 conflict (Maintenance SLAs vs Liability cap).")
+            feedback_parts.append("[PASS] Also identified Section 10 vs 11 conflict (Maintenance SLAs vs Liability cap).")
         else:
             secondary_score = 0.05
-            feedback_parts.append("~ Referenced Section 10 but without detailed conflict analysis.")
+            feedback_parts.append("[PARTIAL] Referenced Section 10 but without detailed conflict analysis.")
     else:
         # Check for any other valid observations
         other_valid = ["arbitrator", "punitive", "no authority", "13.3"]
         if any(kw in normalized_all for kw in other_valid):
             secondary_score = 0.05
-            feedback_parts.append("~ Noted other valid contractual concerns.")
+            feedback_parts.append("[PARTIAL] Noted other valid contractual concerns.")
         else:
-            feedback_parts.append("~ Did not identify secondary conflicts (e.g., Section 10 vs 11).")
+            feedback_parts.append("[PARTIAL] Did not identify secondary conflicts (e.g., Section 10 vs 11).")
 
     score += secondary_score
 
     # =============================================================================
-    # ADVANCED EVALUATION ADJUSTMENTS (ADD THIS BLOCK)
+    # ADVANCED EVALUATION ADJUSTMENTS
     # =============================================================================
 
-    # 1. Overconfidence / verbosity penalty
-    word_count = len(_normalize(all_text).split())
-    if word_count > 250:
-        penalty = min(0.05, score * 0.1)
-        score -= penalty
-        feedback_parts.append("⚠ Penalty: Overly verbose response reduces clarity.")
+    score = _apply_advanced_adjustments(score, action, all_text, feedback_parts, task="hard")
 
-    # 2. False positive penalty (too many risks = low precision)
-    if len(action.identified_risks) > 5:
-        penalty = min(0.08, score * 0.12)
-        score -= penalty
-        feedback_parts.append("⚠ Penalty: Too many risks identified (possible false positives).")
-
-    # 3. Missing section reference penalty (lack of grounding)
-    if "section" not in _normalize(all_text):
-        penalty = min(0.05, score * 0.1)
-        score -= penalty
-        feedback_parts.append("⚠ Penalty: No specific clause references provided.")
-
-    # 4. Structured output bonus (good format)
-    if isinstance(action.identified_risks, list) and len(action.identified_risks) > 0:
-        score += 0.03
-        feedback_parts.append("✓ Bonus: Proper structured output format.")
-
-    # 5. Cross-clause reasoning bonus (advanced thinking)
-    if action.contradictions and len(action.contradictions) > 0:
-        score += min(0.05, 1.0 - score)
-        feedback_parts.append("✓ Bonus: Identified cross-clause reasoning.")
-
-    # Clamp final score safely
-    score = round(min(1.0, max(0.0, score)), 4)
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
     return score, feedback
 

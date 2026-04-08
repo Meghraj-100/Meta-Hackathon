@@ -125,7 +125,7 @@ async def step(request: StepRequest):
 async def state():
     """Get current environment state."""
     env = _get_or_create_env()
-    return env.get_state().model_dump()
+    return env.state().model_dump()
 
 
 @app.get("/tasks")
@@ -171,7 +171,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "state":
                 response = {
                     "type": "state_result",
-                    "state": env.get_state().model_dump(),
+                    "state": env.state().model_dump(),
                 }
             else:
                 response = {
@@ -235,7 +235,7 @@ if os.environ.get("ENABLE_WEB_INTERFACE", "").lower() in ("true", "1", "yes"):
 
         def gradio_state() -> str:
             env = _get_or_create_env("gradio")
-            return json.dumps(env.get_state().model_dump(), indent=2)
+            return json.dumps(env.state().model_dump(), indent=2)
 
         with gr.Blocks(title="Legal Contract Risk Reviewer") as demo:
             gr.Markdown("# 📜 Legal Contract Risk Reviewer")
