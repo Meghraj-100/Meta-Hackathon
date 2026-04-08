@@ -78,8 +78,7 @@ def _apply_advanced_adjustments(
 
     # 4. Structured output bonus
     if isinstance(action.identified_risks, list) and action.identified_risks:
-        bonus = 0.05 if task == "easy" else 0.03
-        score += bonus
+        score += 0.03
         feedback_parts.append("[PASS] Bonus: Proper structured output format.")
 
     # 5. Cross-clause reasoning bonus (hard task only)
@@ -90,6 +89,7 @@ def _apply_advanced_adjustments(
     # 6. Difficulty skew to ensure scores reflect difficulty curve
     if task == "easy":
         score += 0.50
+        score = min(score, 0.95)  # easy task max is 0.95
     elif task == "medium":
         score += 0.10
     elif task == "hard":
