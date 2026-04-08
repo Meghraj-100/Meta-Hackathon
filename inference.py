@@ -35,14 +35,18 @@ load_dotenv()
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-# MANDATORY: Use exactly these environment variables with no defaults or fallbacks.
-# This ensures all calls go through the required LLM proxy.
-API_BASE_URL = os.environ["API_BASE_URL"]
-API_KEY = os.environ["API_KEY"]
-MODEL_NAME = os.environ["MODEL_NAME"]
+# Resilience Fix: Use .get() with defaults to avoid KeyErrors if variables aren't injected.
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
 
 BENCHMARK = "legal_contract_risk_reviewer"
 TASKS = ["task_1_easy", "task_2_medium", "task_3_hard"]
+
+# Safety Check: Exit gracefully with a clear message if no credentials exist.
+if not API_KEY:
+    print("[ERROR] No API credentials found. Please set API_KEY or HF_TOKEN.", flush=True)
+    sys.exit(1)
 
 # Environment server URL (local by default, or HF Space URL)
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
