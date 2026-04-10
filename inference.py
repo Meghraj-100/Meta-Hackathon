@@ -10,23 +10,28 @@ from openai import OpenAI
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-# Use exactly these variable names — judges inject these
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN")
+API_BASE_URL = os.getenv("API_BASE_URL")
+API_KEY = os.getenv("API_KEY")
+
+if API_BASE_URL and API_KEY:
+    pass
+else:
+    API_BASE_URL = "https://router.huggingface.co/v1"
+    API_KEY = os.getenv("HF_TOKEN")
+
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
 BENCHMARK = "legal_contract_risk_reviewer"
 TASKS = ["task_1_easy", "task_2_medium", "task_3_hard"]
 
-# Validate
 if not API_KEY:
-    print("[ERROR] API_KEY not set", flush=True)
+    print("[ERROR] No API key found. API_KEY or HF_TOKEN must be set.", flush=True, file=sys.stderr)
     sys.exit(1)
 
-# Initialize client exactly as judges specified
+# Initialize client correctly
 client = OpenAI(
     base_url=API_BASE_URL,
-    api_key=API_KEY          # Must use API_KEY for proxy monitoring
+    api_key=API_KEY
 )
 
 # Environment server URL (local by default, or HF Space URL)
@@ -280,30 +285,34 @@ def main():
 
     if not API_KEY:
         print(
-            "ERROR: No API key found. Set OPENAI_API_KEY, API_KEY, or HF_TOKEN.",
+            "ERROR: No API key found. API_KEY or HF_TOKEN must be set.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    all_results = []
-
-    for task_id in TASKS:
-        result = run_task(task_id)
-        all_results.append(result)
-        print("", flush=True)  # blank line between tasks
-
-    # Print summary
-    print("=" * 60, flush=True)
-    print("BASELINE RESULTS SUMMARY", flush=True)
-    print("=" * 60, flush=True)
-    total_score = 0.0
-    for r in all_results:
-        status = "PASS" if r["success"] else "FAIL"
-        print(f"  [{status}] {r['task_id']}: score={r['score']:.3f}", flush=True)
-        total_score += r["score"]
-    avg = total_score / len(all_results) if all_results else 0.0
-    print(f"\n  Average Score: {avg:.3f}", flush=True)
-    print("=" * 60, flush=True)
+    try:
+        all_results = []
+    
+        for task_id in TASKS:
+            result = run_task(task_id)
+            all_results.append(result)
+            print("", flush=True)  # blank line between tasks
+    
+        # Print summary
+        print("=" * 60, flush=True)
+        print("BASELINE RESULTS SUMMARY", flush=True)
+        print("=" * 60, flush=True)
+        total_score = 0.0
+        for r in all_results:
+            status = "PASS" if r["success"] else "FAIL"
+            print(f"  [{status}] {r['task_id']}: score={r['score']:.3f}", flush=True)
+            total_score += r["score"]
+        avg = total_score / len(all_results) if all_results else 0.0
+        print(f"\n  Average Score: {avg:.3f}", flush=True)
+        print("=" * 60, flush=True)
+    except Exception as e:
+        print(f"CRITICAL ERROR in main execution: {str(e)}", file=sys.stderr, flush=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
