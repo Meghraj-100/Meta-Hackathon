@@ -10,29 +10,15 @@ from openai import OpenAI
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-# Try to use judge-provided variables (Phase 2)
-API_BASE_URL = os.getenv("API_BASE_URL")
-API_KEY = os.getenv("API_KEY")
-
-# Fallback ONLY if both are missing (Phase 1 / local)
-if API_BASE_URL is None and API_KEY is None:
-    API_BASE_URL = "https://router.huggingface.co/v1"
-    API_KEY = os.getenv("HF_TOKEN")
-
-# Safe model name handling (no crash if missing)
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-
 BENCHMARK = "legal_contract_risk_reviewer"
 TASKS = ["task_1_easy", "task_2_medium", "task_3_hard"]
 
-# Initialize OpenAI client (MANDATORY FORMAT)
-client = OpenAI(
-    base_url=API_BASE_URL,
-    api_key=API_KEY
-)
-
 # Environment server URL (local by default, or HF Space URL)
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+
+# Global client placeholder (initialized in main)
+client: OpenAI = None
 
 # Inference parameters
 TEMPERATURE = 0.0  # Deterministic for reproducibility
@@ -279,6 +265,16 @@ def run_task(task_id: str) -> Dict[str, Any]:
 
 def main():
     """Run inference on all 3 tasks and produce baseline scores."""
+    global client
+
+    # Strict Phase 2 Proxy Initialization
+    API_BASE_URL = os.environ["API_BASE_URL"]
+    API_KEY = os.environ["API_KEY"]
+
+    client = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=API_KEY
+    )
 
     try:
         all_results = []
