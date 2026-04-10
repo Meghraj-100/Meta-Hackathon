@@ -10,25 +10,22 @@ from openai import OpenAI
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
+# Try to use judge-provided variables (Phase 2)
 API_BASE_URL = os.getenv("API_BASE_URL")
 API_KEY = os.getenv("API_KEY")
 
-if API_BASE_URL and API_KEY:
-    pass
-else:
+# Fallback ONLY if both are missing (Phase 1 / local)
+if API_BASE_URL is None and API_KEY is None:
     API_BASE_URL = "https://router.huggingface.co/v1"
     API_KEY = os.getenv("HF_TOKEN")
 
+# Safe model name handling (no crash if missing)
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
 BENCHMARK = "legal_contract_risk_reviewer"
 TASKS = ["task_1_easy", "task_2_medium", "task_3_hard"]
 
-if not API_KEY:
-    print("[ERROR] No API key found. API_KEY or HF_TOKEN must be set.", flush=True, file=sys.stderr)
-    sys.exit(1)
-
-# Initialize client correctly
+# Initialize OpenAI client (MANDATORY FORMAT)
 client = OpenAI(
     base_url=API_BASE_URL,
     api_key=API_KEY
@@ -283,13 +280,6 @@ def run_task(task_id: str) -> Dict[str, Any]:
 def main():
     """Run inference on all 3 tasks and produce baseline scores."""
 
-    if not API_KEY:
-        print(
-            "ERROR: No API key found. API_KEY or HF_TOKEN must be set.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     try:
         all_results = []
     
@@ -316,4 +306,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"[ERROR] {str(e)}", flush=True)
+        sys.exit(1)
