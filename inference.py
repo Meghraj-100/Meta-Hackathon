@@ -270,17 +270,24 @@ def main():
     global client
 
     # Hackathon-required proxy initialization.
-    # Defaults are allowed only for API_BASE_URL and MODEL_NAME; HF_TOKEN must be provided.
+    # We check for both API_KEY (judge-injected) and HF_TOKEN (standard/local) for maximum robustness.
+    # API_BASE_URL defaults to the HF router if NOT provided by the proxy.
     API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-    HF_TOKEN = os.environ["HF_TOKEN"]
+    
+    # Try judge-injected key first, then HF_TOKEN
+    API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 
-    # Robustness: Ensure /v1 suffix if missing (common fix for LiteLLM proxies)
+    if not API_KEY:
+        print("CRITICAL ERROR: No API Key found. Ensure API_KEY or HF_TOKEN is set.", file=sys.stderr, flush=True)
+        sys.exit(1)
+
+    # Robustness: Ensure /v1 suffix if missing (most common LiteLLM proxy fix)
     if not API_BASE_URL.endswith("/v1") and not API_BASE_URL.endswith("/v1/"):
         API_BASE_URL = API_BASE_URL.rstrip("/") + "/v1"
 
     client = OpenAI(
         base_url=API_BASE_URL,
-        api_key=HF_TOKEN,
+        api_key=API_KEY,
     )
 
     try:
