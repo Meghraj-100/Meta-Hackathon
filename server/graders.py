@@ -12,6 +12,9 @@ from typing import Any, Dict, List, Tuple
 from models import ContractAction
 from server.contracts import TASK_1_GROUND_TRUTH, TASK_2_GROUND_TRUTH, TASK_3_GROUND_TRUTH
 
+# Hackathon validator requires strictly 0 < score < 1 (not 0.0 and not 1.0).
+_SCORE_EPS = 1e-4
+
 
 def _normalize(text: str) -> str:
     """Normalize text for comparison: lowercase, strip extra whitespace."""
@@ -145,7 +148,9 @@ def _apply_advanced_adjustments(
     elif task == "hard":
         score = min(score, 0.60)
 
-    return round(min(1.0, max(0.0, score)), 4)
+    # Ensure strict open interval for validators: (0, 1)
+    score = min(1.0 - _SCORE_EPS, max(_SCORE_EPS, score))
+    return round(score, 4)
 
 
 # =============================================================================

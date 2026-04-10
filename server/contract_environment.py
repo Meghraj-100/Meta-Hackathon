@@ -141,11 +141,15 @@ class ContractRiskEnvironment(Environment):
         Returns:
             ContractObservation with feedback and score.
         """
+        # Hackathon validator requires strictly 0 < score < 1 (not 0.0 and not 1.0).
+        score_eps = 1e-4
+
         # Handle case where environment hasn't been reset
         if self._current_task_data is None:
             return ContractObservation(
                 feedback="Error: Environment must be reset before stepping. "
                          "Call reset(task_id='task_1_easy') first.",
+                score=score_eps,
                 done=True,
                 metadata={"error": "not_reset"},
             )
@@ -154,7 +158,7 @@ class ContractRiskEnvironment(Environment):
         if self._episode_done:
             return ContractObservation(
                 feedback="Episode is already complete. Call reset() to start a new episode.",
-                score=self._state.total_score,
+                score=min(1.0 - score_eps, max(score_eps, self._state.total_score)),
                 done=True,
                 metadata={"status": "already_done"},
             )
@@ -167,6 +171,7 @@ class ContractRiskEnvironment(Environment):
                 return ContractObservation(
                     feedback=f"Error parsing action: {str(e)}. "
                              "Action must conform to ContractAction schema.",
+                    score=score_eps,
                     done=False,
                     metadata={"error": "parse_error", "details": str(e)},
                 )
@@ -183,6 +188,7 @@ class ContractRiskEnvironment(Environment):
             except Exception:
                 return ContractObservation(
                     feedback="Error: Action must be a ContractAction or compatible dict.",
+                    score=score_eps,
                     done=False,
                     metadata={"error": "invalid_action_type"},
                 )
@@ -191,7 +197,7 @@ class ContractRiskEnvironment(Environment):
         if not action.identified_risks and not action.missing_clauses and not action.contradictions:
             return ContractObservation(
                 feedback="Empty analysis provided. Please identify risks or issues.",
-                score=0.0,
+                score=score_eps,
                 done=True,
                 metadata={"error": "empty_action"},
             )
@@ -205,6 +211,8 @@ class ContractRiskEnvironment(Environment):
         # Grade the action
         task_id = self._state.current_task
         score, feedback = grade_task(task_id, action)
+        # Clamp score for strict validator requirement: (0, 1)
+        score = min(1.0 - score_eps, max(score_eps, float(score)))
         # Update state
         self._state.total_score = score
         self._state.is_done = True
