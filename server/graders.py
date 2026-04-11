@@ -43,7 +43,7 @@ def _calculate_gt_bonus(action: ContractAction, gt: Dict[str, Any], task: str, f
         risk_refs = [r.get("clause_reference", "").lower() for r in action.identified_risks]
         for target in target_clauses:
             if any(target.lower() in ref for ref in risk_refs):
-                bonus += 0.05
+                bonus += 0.03
                 feedback_parts.append(f"[PASS] Bonus: Ground Truth Match (Clause: {target})")
                 break # Cap bonus at one match
 
@@ -52,7 +52,7 @@ def _calculate_gt_bonus(action: ContractAction, gt: Dict[str, Any], task: str, f
         risk_types = [r.get("risk_type", "").lower() for r in action.identified_risks]
         for target in target_risks:
             if any(target.lower() in rt for rt in risk_types):
-                bonus += 0.05
+                bonus += 0.03
                 feedback_parts.append(f"[PASS] Bonus: Ground Truth Match (Risk: {target})")
                 break
 
@@ -74,7 +74,7 @@ def _calculate_gt_bonus(action: ContractAction, gt: Dict[str, Any], task: str, f
             for ac in action.contradictions:
                 aca, acb = ac.get("clause_a", "").lower(), ac.get("clause_b", "").lower()
                 if (pa in aca and pb in acb) or (pa in acb and pb in aca):
-                    bonus += 0.10
+                    bonus += 0.07
                     feedback_parts.append(f"[PASS] Bonus: Ground Truth Match (Contradiction: {pair['clause_a']} vs {pair['clause_b']})")
                     return bonus # Return early for hard task after primary match
     
@@ -145,6 +145,7 @@ def _apply_advanced_adjustments(
     elif task == "hard":
         score = min(score, 0.60)
 
+    # Final hard clamp — must be LAST thing before return
     score = max(0.01, min(0.99, score))
     return round(score, 4)
 
@@ -293,15 +294,14 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
     # --- Ground Truth Validation Bonus ---
     score += _calculate_gt_bonus(action, gt, task="easy", feedback_parts=feedback_parts)
 
-    # =============================================================================
-    # ADVANCED EVALUATION ADJUSTMENTS
-    # =============================================================================
-
+    # Advanced adjustments — clamps score inside
     score = _apply_advanced_adjustments(score, action, all_text, feedback_parts, task="easy")
 
+    # Final hard clamp — must be LAST thing before return
     score = max(0.01, min(0.99, score))
+    score = round(score, 4)
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
-    return round(score, 4), feedback
+    return score, feedback
 
 
 # =============================================================================
@@ -450,15 +450,14 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
     # --- Ground Truth Validation Bonus ---
     score += _calculate_gt_bonus(action, gt, task="medium", feedback_parts=feedback_parts)
 
-    # =============================================================================
-    # ADVANCED EVALUATION ADJUSTMENTS
-    # =============================================================================
-
+    # Advanced adjustments — clamps score inside
     score = _apply_advanced_adjustments(score, action, all_text, feedback_parts, task="medium")
 
+    # Final hard clamp — must be LAST thing before return
     score = max(0.01, min(0.99, score))
+    score = round(score, 4)
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
-    return round(score, 4), feedback
+    return score, feedback
 
 
 # =============================================================================
@@ -653,15 +652,14 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
     # --- Ground Truth Validation Bonus ---
     score += _calculate_gt_bonus(action, gt, task="hard", feedback_parts=feedback_parts)
 
-    # =============================================================================
-    # ADVANCED EVALUATION ADJUSTMENTS
-    # =============================================================================
-
+    # Advanced adjustments — clamps score inside
     score = _apply_advanced_adjustments(score, action, all_text, feedback_parts, task="hard")
 
+    # Final hard clamp — must be LAST thing before return
     score = max(0.01, min(0.99, score))
+    score = round(score, 4)
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
-    return round(score, 4), feedback
+    return score, feedback
 
 
 # =============================================================================
@@ -687,5 +685,5 @@ def grade_task(task_id: str, action: ContractAction) -> Tuple[float, str]:
         Tuple of (score 0.0-1.0, feedback string)
     """
     if task_id not in GRADERS:
-        return 0.0, f"Unknown task_id: {task_id}"
+        return 0.01, f"Unknown task_id: {task_id}"
     return GRADERS[task_id](action)
