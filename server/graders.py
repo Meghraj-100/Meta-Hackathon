@@ -12,9 +12,6 @@ from typing import Any, Dict, List, Tuple
 from models import ContractAction
 from server.contracts import TASK_1_GROUND_TRUTH, TASK_2_GROUND_TRUTH, TASK_3_GROUND_TRUTH
 
-# Hackathon validator requires strictly 0 < score < 1 (not 0.0 and not 1.0).
-_SCORE_EPS = 1e-4
-
 
 def _normalize(text: str) -> str:
     """Normalize text for comparison: lowercase, strip extra whitespace."""
@@ -132,12 +129,12 @@ def _apply_advanced_adjustments(
 
     # 4. Structured output bonus
     if isinstance(action.identified_risks, list) and action.identified_risks:
-        score = min(score + 0.03, 1.0)
+        score = min(score + 0.03, 0.99)
         feedback_parts.append("[PASS] Bonus: Proper structured output format.")
 
     # 5. Cross-clause reasoning bonus (hard task only)
     if task == "hard" and action.contradictions:
-        score += min(0.05, 1.0 - score)
+        score += min(0.05, 0.99 - score)
         feedback_parts.append("[PASS] Bonus: Identified cross-clause reasoning.")
 
     # 6. Cap tasks
@@ -148,8 +145,7 @@ def _apply_advanced_adjustments(
     elif task == "hard":
         score = min(score, 0.60)
 
-    # Ensure strict open interval for validators: (0, 1)
-    score = min(1.0 - _SCORE_EPS, max(_SCORE_EPS, score))
+    score = max(0.01, min(0.99, score))
     return round(score, 4)
 
 
@@ -289,7 +285,7 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
                 wrong_sections.append(ref)
         if len(wrong_sections) > 2:
             penalty = min(0.1, score * 0.15)
-            score = max(0.0, score - penalty)
+            score = max(0.01, score - penalty)
             feedback_parts.append(
                 f"[WARNING] Penalty: Multiple incorrect clause references ({len(wrong_sections)} irrelevant sections flagged)."
             )
@@ -303,8 +299,9 @@ def grade_easy(action: ContractAction) -> Tuple[float, str]:
 
     score = _apply_advanced_adjustments(score, action, all_text, feedback_parts, task="easy")
 
+    score = max(0.01, min(0.99, score))
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
-    return score, feedback
+    return round(score, 4), feedback
 
 
 # =============================================================================
@@ -459,8 +456,9 @@ def grade_medium(action: ContractAction) -> Tuple[float, str]:
 
     score = _apply_advanced_adjustments(score, action, all_text, feedback_parts, task="medium")
 
+    score = max(0.01, min(0.99, score))
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
-    return score, feedback
+    return round(score, 4), feedback
 
 
 # =============================================================================
@@ -661,8 +659,9 @@ def grade_hard(action: ContractAction) -> Tuple[float, str]:
 
     score = _apply_advanced_adjustments(score, action, all_text, feedback_parts, task="hard")
 
+    score = max(0.01, min(0.99, score))
     feedback = f"Score: {score}/1.0\n" + "\n".join(feedback_parts)
-    return score, feedback
+    return round(score, 4), feedback
 
 
 # =============================================================================

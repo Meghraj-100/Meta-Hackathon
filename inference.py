@@ -228,7 +228,7 @@ def run_task(task_id: str) -> Dict[str, Any]:
 
         rewards.append(reward)
         steps_taken = 1
-        score = reward  # Single-step task, score equals the reward
+        score = min(0.99, max(0.01, reward))
         success = score >= SUCCESS_SCORE_THRESHOLD
 
         log_step(
@@ -306,6 +306,14 @@ def main():
         for task_id in TASKS:
             result = run_task(task_id)
             all_results.append(result)
+
+        total_score = sum(r["score"] for r in all_results)
+        avg = (
+            min(0.99, max(0.01, total_score / len(all_results)))
+            if all_results
+            else 0.01
+        )
+        print(f"BASELINE_AVG_SCORE={avg:.4f}", file=sys.stderr, flush=True)
     except Exception as e:
         # Keep stdout strictly for [START]/[STEP]/[END]; send diagnostics to stderr.
         print(f"CRITICAL ERROR in main execution: {str(e)}", file=sys.stderr, flush=True)
