@@ -78,8 +78,8 @@ class ContractObservation(BaseModel):
         description="Feedback from grader after agent submits analysis (empty on reset).",
     )
     score: float = Field(
-        default=0.0,
-        description="Score from the grader (0.0-1.0), populated after step.",
+        default=0.01,
+        description="Score from the grader (0.01-0.99), populated after step.",
     )
     done: bool = Field(
         default=False,
@@ -100,5 +100,5 @@ class ContractState(BaseModel):
     step_count: int = Field(default=0, description="Number of steps taken.")
     current_task: str = Field(default="", description="Current task ID.")
     current_difficulty: str = Field(default="", description="Current task difficulty.")
-    total_score: float = Field(default=0.0, description="Accumulated score.")
+    total_score: float = Field(default=0.01, description="Accumulated score.")
     is_done: bool = Field(default=False, description="Whether episode is complete.")

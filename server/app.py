@@ -95,7 +95,7 @@ async def reset(request: ResetRequest = ResetRequest()):
     )
     return {
         "observation": obs.model_dump(),
-        "reward": 0.0,
+        "reward": 0.01,
         "done": False,
         "info": {"task_id": request.task_id},
     }
@@ -155,7 +155,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 response = {
                     "type": "reset_result",
                     "observation": obs.model_dump(),
-                    "reward": 0.0,
+                    "reward": 0.01,
                     "done": False,
                 }
             elif msg_type == "step":

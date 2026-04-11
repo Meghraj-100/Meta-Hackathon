@@ -98,7 +98,7 @@ class ContractRiskEnvironment(Environment):
             step_count=0,
             current_task=task_id,
             current_difficulty=gt["difficulty"],
-            total_score=0.0,
+            total_score=0.01,
             is_done=False,
         )
 
@@ -109,7 +109,7 @@ class ContractRiskEnvironment(Environment):
             task_difficulty=gt["difficulty"],
             instructions=gt["instructions"],
             feedback="",
-            score=0.0,
+            score=0.01,
             done=False,
             metadata={
                 "available_tasks": get_all_task_ids(),
@@ -208,8 +208,9 @@ class ContractRiskEnvironment(Environment):
         # Grade the action
         task_id = self._state.current_task
         score, feedback = grade_task(task_id, action)
-        self._state.total_score = score
+        # Clamp BEFORE storing
         score = min(0.99, max(0.01, score))
+        self._state.total_score = score
         self._state.is_done = True
         self._episode_done = True
 

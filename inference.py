@@ -8,6 +8,18 @@ from typing import Any, Dict, List, Optional
 import requests
 from openai import OpenAI
 
+def safe_score(value: float) -> float:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        v = 0.01
+    if v <= 0.0:
+        return 0.01
+    if v >= 1.0:
+        return 0.99
+    return round(v, 4)
+
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
@@ -193,7 +205,7 @@ def run_task(task_id: str) -> Dict[str, Any]:
     """
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
+    score = 0.01
     success = False
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -222,13 +234,13 @@ def run_task(task_id: str) -> Dict[str, Any]:
         # Submit action to environment for grading
         step_result = env_step(action)
 
-        reward = step_result.get("reward", 0.0)
+        reward = safe_score(step_result.get("reward", 0.01))
         done = step_result.get("done", True)
         error_msg = step_result.get("observation", {}).get("metadata", {}).get("error", None)
 
         rewards.append(reward)
         steps_taken = 1
-        score = min(0.99, max(0.01, reward))
+        score = safe_score(reward)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
         log_step(
@@ -243,23 +255,31 @@ def run_task(task_id: str) -> Dict[str, Any]:
         log_step(
             step=1,
             action="error",
-            reward=0.0,
+            reward=0.01,
             done=True,
             error=str(exc),
         )
-        rewards = [0.0]
+        rewards = [0.01]
+        score = 0.01
         steps_taken = 1
         traceback.print_exc(file=sys.stderr)
 
     finally:
-        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+        safe_rewards = [safe_score(r) for r in rewards]
+        safe_final_score = safe_score(score)
+        log_end(
+            success=success,
+            steps=steps_taken,
+            score=safe_final_score,
+            rewards=safe_rewards
+        )
 
     return {
         "task_id": task_id,
-        "score": score,
+        "score": safe_score(score),
         "success": success,
         "steps": steps_taken,
-        "rewards": rewards,
+        "rewards": [safe_score(r) for r in rewards],
     }
 
 
